@@ -1,0 +1,23 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  - job_name: 'portfolio_rebalancer'
+    static_configs:
+      - targets: ['localhost:8000']
+    metrics_path: /metrics
+    scrape_timeout: 10s
+    metrics_path: /metrics
+    honor_labels: true
+    scheme: http
+    
+  - job_name: 'portfolio_rebalancer_node'
+    static_configs:
+      - targets: ['localhost:9100']
+    metrics_path: /metrics
+    
+  - job_name: 'portfolio_rebalancer_process'
+    static_configs:
+      - targets: ['localhost:9256']
+    metrics_path: /metrics

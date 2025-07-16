@@ -1,0 +1,342 @@
+version: '3.8'
+
+services:
+  # Main scheduler service for automated daily execution
+  scheduler:
+    build:
+      context: .
+      dockerfile: dockerfiles/Dockerfile.scheduler
+      args:
+        BUILD_DATE: ${BUILD_DATE:-}
+        VCS_REF: ${VCS_REF:-}
+        VERSION: ${VERSION:-latest}
+    image: portfolio-rebalancer-scheduler:${VERSION:-latest}
+    container_name: portfolio-scheduler
+    ports:
+      - "8083:8083"
+    environment:
+      # Data Configuration
+      - TICKERS=${TICKERS:-SPY,QQQ,VTI,VXUS,BND}
+      - STORAGE_TYPE=${STORAGE_TYPE:-parquet}
+      - STORAGE_PATH=/app/data
+      - BACKFILL_DAYS=${BACKFILL_DAYS:-252}
+      
+      # Optimization Configuration
+      - USER_AGE=${USER_AGE:-35}
+      - RISK_FREE_RATE=${RISK_FREE_RATE:-0.02}
+      - LOOKBACK_DAYS=${LOOKBACK_DAYS:-252}
+      - MIN_WEIGHT=${MIN_WEIGHT:-0.0}
+      - MAX_WEIGHT=${MAX_WEIGHT:-0.4}
+      - SAFE_PORTFOLIO_BONDS=${SAFE_PORTFOLIO_BONDS:-0.8}
+      
+      # Executor Configuration
+      - REBALANCE_THRESHOLD=${REBALANCE_THRESHOLD:-0.05}
+      - ORDER_TYPE=${ORDER_TYPE:-market}
+      - BROKER_TYPE=${BROKER_TYPE:-alpaca}
+      
+      # Broker Configuration
+      - ALPACA_API_KEY=${ALPACA_API_KEY}
+      - ALPACA_SECRET_KEY=${ALPACA_SECRET_KEY}
+      - ALPACA_BASE_URL=${ALPACA_BASE_URL:-https://paper-api.alpaca.markets}
+      - IB_HOST=${IB_HOST:-127.0.0.1}
+      - IB_PORT=${IB_PORT:-7497}
+      - IB_CLIENT_ID=${IB_CLIENT_ID:-1}
+      
+      # Scheduler Configuration
+      - EXECUTION_TIME=${EXECUTION_TIME:-16:30}
+      - TIMEZONE=${TIMEZONE:-America/New_York}
+      - RETRY_ATTEMPTS=${RETRY_ATTEMPTS:-3}
+      - RETRY_DELAY=${RETRY_DELAY:-300}
+      
+      # Logging Configuration
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - LOG_FORMAT=${LOG_FORMAT:-json}
+      - LOG_FILE_PATH=/app/logs/scheduler.log
+    volumes:
+      - portfolio_data:/app/data
+      - portfolio_logs:/app/logs
+    networks:
+      - portfolio-network
+    restart: unless-stopped
+    depends_on:
+      data-storage:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8083/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # Data fetcher service (manual execution)
+  data-fetcher:
+    build:
+      context: .
+      dockerfile: dockerfiles/Dockerfile.fetcher
+      args:
+        BUILD_DATE: ${BUILD_DATE:-}
+        VCS_REF: ${VCS_REF:-}
+        VERSION: ${VERSION:-latest}
+    image: portfolio-rebalancer-fetcher:${VERSION:-latest}
+    container_name: portfolio-fetcher
+    ports:
+      - "8080:8080"
+    environment:
+      - TICKERS=${TICKERS:-SPY,QQQ,VTI,VXUS,BND}
+      - STORAGE_TYPE=${STORAGE_TYPE:-parquet}
+      - STORAGE_PATH=/app/data
+      - BACKFILL_DAYS=${BACKFILL_DAYS:-252}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - LOG_FORMAT=${LOG_FORMAT:-json}
+      - LOG_FILE_PATH=/app/logs/fetcher.log
+    volumes:
+      - portfolio_data:/app/data
+      - portfolio_logs:/app/logs
+    networks:
+      - portfolio-network
+    profiles: ["manual"]
+    depends_on:
+      data-storage:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # Portfolio optimizer service (manual execution)
+  optimizer:
+    build:
+      context: .
+      dockerfile: dockerfiles/Dockerfile.optimizer
+      args:
+        BUILD_DATE: ${BUILD_DATE:-}
+        VCS_REF: ${VCS_REF:-}
+        VERSION: ${VERSION:-latest}
+    image: portfolio-rebalancer-optimizer:${VERSION:-latest}
+    container_name: portfolio-optimizer
+    ports:
+      - "8081:8081"
+    environment:
+      - TICKERS=${TICKERS:-SPY,QQQ,VTI,VXUS,BND}
+      - STORAGE_TYPE=${STORAGE_TYPE:-parquet}
+      - STORAGE_PATH=/app/data
+      - USER_AGE=${USER_AGE:-35}
+      - RISK_FREE_RATE=${RISK_FREE_RATE:-0.02}
+      - LOOKBACK_DAYS=${LOOKBACK_DAYS:-252}
+      - MIN_WEIGHT=${MIN_WEIGHT:-0.0}
+      - MAX_WEIGHT=${MAX_WEIGHT:-0.4}
+      - SAFE_PORTFOLIO_BONDS=${SAFE_PORTFOLIO_BONDS:-0.8}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - LOG_FORMAT=${LOG_FORMAT:-json}
+      - LOG_FILE_PATH=/app/logs/optimizer.log
+    volumes:
+      - portfolio_data:/app/data
+      - portfolio_logs:/app/logs
+    networks:
+      - portfolio-network
+    profiles: ["manual"]
+    depends_on:
+      data-storage:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8081/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # Trade executor service (manual execution)
+  executor:
+    build:
+      context: .
+      dockerfile: dockerfiles/Dockerfile.executor
+      args:
+        BUILD_DATE: ${BUILD_DATE:-}
+        VCS_REF: ${VCS_REF:-}
+        VERSION: ${VERSION:-latest}
+    image: portfolio-rebalancer-executor:${VERSION:-latest}
+    container_name: portfolio-executor
+    ports:
+      - "8082:8082"
+    environment:
+      - STORAGE_TYPE=${STORAGE_TYPE:-parquet}
+      - STORAGE_PATH=/app/data
+      - REBALANCE_THRESHOLD=${REBALANCE_THRESHOLD:-0.05}
+      - ORDER_TYPE=${ORDER_TYPE:-market}
+      - BROKER_TYPE=${BROKER_TYPE:-alpaca}
+      - ALPACA_API_KEY=${ALPACA_API_KEY}
+      - ALPACA_SECRET_KEY=${ALPACA_SECRET_KEY}
+      - ALPACA_BASE_URL=${ALPACA_BASE_URL:-https://paper-api.alpaca.markets}
+      - IB_HOST=${IB_HOST:-127.0.0.1}
+      - IB_PORT=${IB_PORT:-7497}
+      - IB_CLIENT_ID=${IB_CLIENT_ID:-1}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - LOG_FORMAT=${LOG_FORMAT:-json}
+      - LOG_FILE_PATH=/app/logs/executor.log
+    volumes:
+      - portfolio_data:/app/data
+      - portfolio_logs:/app/logs
+    networks:
+      - portfolio-network
+    profiles: ["manual"]
+    depends_on:
+      data-storage:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8082/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # Data storage initialization service
+  data-storage:
+    image: alpine:latest
+    container_name: portfolio-storage-init
+    command: |
+      sh -c "
+        echo 'Initializing data storage...' &&
+        mkdir -p /app/data /app/logs &&
+        chown -R 1000:1000 /app/data /app/logs &&
+        chmod -R 755 /app/data /app/logs &&
+        echo 'Data storage initialization complete'
+      "
+    volumes:
+      - portfolio_data:/app/data
+      - portfolio_logs:/app/logs
+    networks:
+      - portfolio-network
+
+  # Optional: Monitoring with Prometheus
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: portfolio-prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--storage.tsdb.retention.time=200h'
+      - '--web.enable-lifecycle'
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus_data:/prometheus
+    profiles: ["monitoring"]
+    restart: unless-stopped
+
+  # Optional: Grafana for visualization
+  grafana:
+    image: grafana/grafana:latest
+    container_name: portfolio-grafana
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD:-admin}
+      - GF_USERS_ALLOW_SIGN_UP=false
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./monitoring/grafana/dashboards:/etc/grafana/provisioning/dashboards
+      - ./monitoring/grafana/datasources:/etc/grafana/provisioning/datasources
+    profiles: ["monitoring"]
+    depends_on:
+      - prometheus
+    restart: unless-stopped
+
+  # Optional: Redis for caching and message queuing
+  redis:
+    image: redis:7-alpine
+    container_name: portfolio-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    profiles: ["cache"]
+    restart: unless-stopped
+    command: redis-server --appendonly yes
+
+  # Optional: PostgreSQL for advanced data storage
+  postgres:
+    image: postgres:15-alpine
+    container_name: portfolio-postgres
+    environment:
+      - POSTGRES_DB=${POSTGRES_DB:-portfolio_rebalancer}
+      - POSTGRES_USER=${POSTGRES_USER:-portfolio_user}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-portfolio_pass}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./sql/init.sql:/docker-entrypoint-initdb.d/init.sql
+    profiles: ["database"]
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-portfolio_user}"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+  # Optional: Data backup service
+  backup:
+    image: alpine:latest
+    container_name: portfolio-backup
+    command: |
+      sh -c "
+        echo 'Starting backup service...' &&
+        while true; do
+          echo 'Creating backup at $(date)' &&
+          tar -czf /backup/portfolio-data-$(date +%Y%m%d-%H%M%S).tar.gz -C /app/data . &&
+          find /backup -name 'portfolio-data-*.tar.gz' -mtime +7 -delete &&
+          echo 'Backup completed, sleeping for 24 hours' &&
+          sleep 86400
+        done
+      "
+    volumes:
+      - portfolio_data:/app/data:ro
+      - portfolio_backup:/backup
+    profiles: ["backup"]
+    restart: unless-stopped
+    depends_on:
+      data-storage:
+        condition: service_completed_successfully
+
+volumes:
+  # Data persistence volumes
+  portfolio_data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${DATA_PATH:-${PWD}/data}
+  portfolio_logs:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${LOGS_PATH:-${PWD}/logs}
+  
+  # Monitoring volumes
+  prometheus_data:
+    driver: local
+  grafana_data:
+    driver: local
+  
+  # Cache and database volumes
+  redis_data:
+    driver: local
+  postgres_data:
+    driver: local
+  
+  # Backup volumes for data safety
+  portfolio_backup:
+    driver: local
+
+networks:
+  portfolio-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16

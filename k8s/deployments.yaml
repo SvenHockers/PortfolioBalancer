@@ -1,0 +1,218 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: portfolio-fetcher
+  namespace: portfolio-rebalancer
+  labels:
+    app: portfolio-rebalancer
+    component: fetcher
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: portfolio-rebalancer
+      component: fetcher
+  template:
+    metadata:
+      labels:
+        app: portfolio-rebalancer
+        component: fetcher
+    spec:
+      containers:
+      - name: data-fetcher
+        image: portfolio-rebalancer/fetcher:latest
+        imagePullPolicy: IfNotPresent
+        command: ["python", "-m", "portfolio_rebalancer.services.fetcher_service"]
+        env:
+        - name: EXECUTION_MODE
+          value: "on-demand"
+        envFrom:
+        - configMapRef:
+            name: portfolio-config
+        - secretRef:
+            name: broker-credentials
+        volumeMounts:
+        - name: data-storage
+          mountPath: /app/data
+        - name: logs-storage
+          mountPath: /app/logs
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "200m"
+          limits:
+            memory: "1Gi"
+            cpu: "1000m"
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 30
+          periodSeconds: 30
+          timeoutSeconds: 10
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /ready
+            port: 8080
+          initialDelaySeconds: 10
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        ports:
+        - containerPort: 8080
+          name: http
+      volumes:
+      - name: data-storage
+        persistentVolumeClaim:
+          claimName: portfolio-data-pvc
+      - name: logs-storage
+        persistentVolumeClaim:
+          claimName: portfolio-logs-pvc
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: portfolio-optimizer
+  namespace: portfolio-rebalancer
+  labels:
+    app: portfolio-rebalancer
+    component: optimizer
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: portfolio-rebalancer
+      component: optimizer
+  template:
+    metadata:
+      labels:
+        app: portfolio-rebalancer
+        component: optimizer
+    spec:
+      containers:
+      - name: portfolio-optimizer
+        image: portfolio-rebalancer/optimizer:latest
+        imagePullPolicy: IfNotPresent
+        command: ["python", "-m", "portfolio_rebalancer.services.optimizer_service"]
+        env:
+        - name: EXECUTION_MODE
+          value: "on-demand"
+        envFrom:
+        - configMapRef:
+            name: portfolio-config
+        - secretRef:
+            name: broker-credentials
+        volumeMounts:
+        - name: data-storage
+          mountPath: /app/data
+        - name: logs-storage
+          mountPath: /app/logs
+        resources:
+          requests:
+            memory: "1Gi"
+            cpu: "500m"
+          limits:
+            memory: "2Gi"
+            cpu: "2000m"
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8081
+          initialDelaySeconds: 30
+          periodSeconds: 30
+          timeoutSeconds: 10
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /ready
+            port: 8081
+          initialDelaySeconds: 10
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        ports:
+        - containerPort: 8081
+          name: http
+      volumes:
+      - name: data-storage
+        persistentVolumeClaim:
+          claimName: portfolio-data-pvc
+      - name: logs-storage
+        persistentVolumeClaim:
+          claimName: portfolio-logs-pvc
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: portfolio-executor
+  namespace: portfolio-rebalancer
+  labels:
+    app: portfolio-rebalancer
+    component: executor
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: portfolio-rebalancer
+      component: executor
+  template:
+    metadata:
+      labels:
+        app: portfolio-rebalancer
+        component: executor
+    spec:
+      containers:
+      - name: trade-executor
+        image: portfolio-rebalancer/executor:latest
+        imagePullPolicy: IfNotPresent
+        command: ["python", "-m", "portfolio_rebalancer.services.executor_service"]
+        env:
+        - name: EXECUTION_MODE
+          value: "on-demand"
+        envFrom:
+        - configMapRef:
+            name: portfolio-config
+        - secretRef:
+            name: broker-credentials
+        volumeMounts:
+        - name: data-storage
+          mountPath: /app/data
+        - name: logs-storage
+          mountPath: /app/logs
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "100m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8082
+          initialDelaySeconds: 30
+          periodSeconds: 30
+          timeoutSeconds: 10
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /ready
+            port: 8082
+          initialDelaySeconds: 10
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        ports:
+        - containerPort: 8082
+          name: http
+      volumes:
+      - name: data-storage
+        persistentVolumeClaim:
+          claimName: portfolio-data-pvc
+      - name: logs-storage
+        persistentVolumeClaim:
+          claimName: portfolio-logs-pvc

@@ -1,0 +1,66 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: portfolio-rebalancer-daily
+  namespace: portfolio-rebalancer
+  labels:
+    app: portfolio-rebalancer
+    component: scheduler
+spec:
+  # Run daily at 4:30 PM EST (after market close)
+  schedule: "30 21 * * 1-5"  # 21:30 UTC = 4:30 PM EST on weekdays
+  timeZone: "America/New_York"
+  concurrencyPolicy: Forbid  # Prevent overlapping executions
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      template:
+        metadata:
+          labels:
+            app: portfolio-rebalancer
+            component: scheduler
+        spec:
+          restartPolicy: OnFailure
+          containers:
+          - name: portfolio-scheduler
+            image: portfolio-rebalancer/scheduler:latest
+            imagePullPolicy: IfNotPresent
+            command: ["python", "-m", "portfolio_rebalancer.services.scheduler_service"]
+            env:
+            - name: EXECUTION_MODE
+              value: "scheduled"
+            envFrom:
+            - configMapRef:
+                name: portfolio-config
+            - secretRef:
+                name: broker-credentials
+            volumeMounts:
+            - name: data-storage
+              mountPath: /app/data
+            - name: logs-storage
+              mountPath: /app/logs
+            resources:
+              requests:
+                memory: "256Mi"
+                cpu: "100m"
+              limits:
+                memory: "512Mi"
+                cpu: "500m"
+            livenessProbe:
+              exec:
+                command:
+                - python
+                - -c
+                - "import sys; sys.exit(0)"
+              initialDelaySeconds: 30
+              periodSeconds: 60
+              timeoutSeconds: 10
+              failureThreshold: 3
+          volumes:
+          - name: data-storage
+            persistentVolumeClaim:
+              claimName: portfolio-data-pvc
+          - name: logs-storage
+            persistentVolumeClaim:
+              claimName: portfolio-logs-pvc

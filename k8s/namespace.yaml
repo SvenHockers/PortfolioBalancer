@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: portfolio-rebalancer
+  labels:
+    name: portfolio-rebalancer
+    app: portfolio-rebalancer

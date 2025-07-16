@@ -16,6 +16,38 @@ from contextlib import contextmanager
 
 # Import prometheus_client conditionally to allow the system to work
 # even if prometheus_client is not installed
+# Create dummy metric classes for graceful degradation
+class DummyMetric:
+    def __init__(self, *args, **kwargs):
+        pass
+    
+    def inc(self, *args, **kwargs):
+        pass
+        
+    def dec(self, *args, **kwargs):
+        pass
+        
+    def set(self, *args, **kwargs):
+        pass
+        
+    def observe(self, *args, **kwargs):
+        pass
+        
+    def time(self):
+        class DummyTimer:
+            def __enter__(self):
+                return self
+                
+            def __exit__(self, exc_type, exc_val, exc_tb):
+                pass
+        return DummyTimer()
+    
+    def labels(self, *args, **kwargs):
+        return self
+    
+    def info(self, *args, **kwargs):
+        pass
+
 try:
     import prometheus_client
     from prometheus_client import Counter, Gauge, Histogram, Summary, Info
@@ -23,38 +55,6 @@ try:
     PROMETHEUS_AVAILABLE = True
 except ImportError:
     PROMETHEUS_AVAILABLE = False
-    # Create dummy metric classes for graceful degradation
-    class DummyMetric:
-        def __init__(self, *args, **kwargs):
-            pass
-        
-        def inc(self, *args, **kwargs):
-            pass
-            
-        def dec(self, *args, **kwargs):
-            pass
-            
-        def set(self, *args, **kwargs):
-            pass
-            
-        def observe(self, *args, **kwargs):
-            pass
-            
-        def time(self):
-            class DummyTimer:
-                def __enter__(self):
-                    return self
-                    
-                def __exit__(self, exc_type, exc_val, exc_tb):
-                    pass
-            return DummyTimer()
-        
-        def labels(self, *args, **kwargs):
-            return self
-        
-        def info(self, *args, **kwargs):
-            pass
-    
     Counter = Gauge = Histogram = Summary = Info = DummyMetric
 
 logger = logging.getLogger(__name__)
