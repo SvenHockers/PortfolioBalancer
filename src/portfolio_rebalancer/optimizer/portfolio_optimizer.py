@@ -9,6 +9,10 @@ import pandas as pd
 
 from ..common.interfaces import DataStorage, OptimizationStrategy
 from ..common.models import TargetAllocation
+from ..common.metrics import (
+    timed, record_portfolio_metrics, record_optimization_convergence,
+    record_optimization_performance, record_data_quality
+)
 from .risk_model import RiskModel
 from .optimization import SharpeOptimizer
 from .glide_path import GlidePath, GlidePathConfig
@@ -57,6 +61,7 @@ class PortfolioOptimizer:
         
         logger.info(f"Initialized PortfolioOptimizer with allocation storage: {self.allocation_storage_path}")
     
+    @timed("optimizer", "optimize_portfolio")
     def optimize_portfolio(self,
                           tickers: List[str],
                           lookback_days: int,
@@ -146,6 +151,23 @@ class PortfolioOptimizer:
                     final_allocation, expected_returns, cov_matrix
                 )
                 logger.info("Successfully calculated final portfolio metrics")
+                
+                # Record portfolio metrics for Prometheus
+                record_portfolio_metrics(
+                    expected_return=portfolio_metrics[0],
+                    volatility=portfolio_metrics[1],
+                    sharpe_ratio=portfolio_metrics[2]
+                )
+                
+                # Record optimization performance metrics
+                optimization_perf = {
+                    "expected_return": portfolio_metrics[0],
+                    "volatility": portfolio_metrics[1],
+                    "sharpe_ratio": portfolio_metrics[2],
+                    "asset_count": len(final_allocation)
+                }
+                record_optimization_performance("portfolio", optimization_perf)
+                
             except Exception as e:
                 logger.error(f"Portfolio metrics calculation failed: {str(e)}")
                 # Use default metrics as fallback

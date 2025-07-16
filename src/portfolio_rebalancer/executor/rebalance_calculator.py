@@ -7,6 +7,7 @@ from decimal import Decimal, ROUND_HALF_UP
 
 from ..common.models import TargetAllocation, CurrentHolding, TradeOrder
 from ..common.config import get_config
+from ..common.metrics import timed, record_portfolio_drift
 
 logger = logging.getLogger(__name__)
 
@@ -38,6 +39,7 @@ class RebalanceCalculator:
             f"min_trade_value=${self.min_trade_value:.2f}"
         )
     
+    @timed("calculator", "calculate_drift")
     def calculate_drift(self, 
                        current_holdings: Dict[str, CurrentHolding],
                        target_allocation: TargetAllocation) -> Dict[str, float]:
@@ -87,6 +89,7 @@ class RebalanceCalculator:
         self.logger.info(f"Calculated drift for {len(drift)} assets")
         return drift
     
+    @timed("calculator", "is_rebalancing_needed")
     def is_rebalancing_needed(self, 
                              current_holdings: Dict[str, CurrentHolding],
                              target_allocation: TargetAllocation) -> Tuple[bool, Dict[str, float]]:
@@ -140,6 +143,7 @@ class RebalanceCalculator:
         self.logger.info("No rebalancing needed, all assets within drift thresholds")
         return False, drift
     
+    @timed("calculator", "calculate_trades")
     def calculate_trades(self,
                         current_holdings: Dict[str, CurrentHolding],
                         target_allocation: TargetAllocation,
