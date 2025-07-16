@@ -1,6 +1,6 @@
 """Pydantic data models for the portfolio rebalancer system."""
 
-from datetime import date, datetime
+from datetime import date as Date, datetime as DateTime
 from typing import Dict, Optional
 from decimal import Decimal
 from pydantic import BaseModel, Field, field_validator, model_validator, ConfigDict
@@ -34,7 +34,7 @@ class PriceData(BaseModel):
     model_config = ConfigDict(validate_assignment=True, use_enum_values=True)
     
     symbol: str = Field(..., description="Ticker symbol")
-    date: date = Field(..., description="Date of the price data")
+    date: Date = Field(..., description="Date of the price data")
     adjusted_close: float = Field(..., gt=0, description="Adjusted closing price")
     volume: int = Field(..., ge=0, description="Trading volume")
     
@@ -62,7 +62,7 @@ class TargetAllocation(BaseModel):
     
     model_config = ConfigDict(validate_assignment=True)
     
-    timestamp: datetime = Field(..., description="When the allocation was calculated")
+    timestamp: DateTime = Field(..., description="When the allocation was calculated")
     allocations: Dict[str, float] = Field(..., description="Symbol to weight mapping")
     expected_return: float = Field(..., description="Expected annual return")
     expected_volatility: float = Field(..., ge=0, description="Expected annual volatility")
@@ -146,30 +146,35 @@ class CurrentHolding(BaseModel):
 class TradeOrder(BaseModel):
     """Model for trade orders."""
     
+    model_config = ConfigDict(validate_assignment=True, use_enum_values=True)
+    
     order_id: str = Field(..., description="Unique order identifier")
     symbol: str = Field(..., description="Ticker symbol")
     quantity: float = Field(..., description="Order quantity (positive for buy, negative for sell)")
     order_type: OrderType = Field(..., description="Order type")
     side: OrderSide = Field(..., description="Order side")
     status: OrderStatus = Field(..., description="Order status")
-    timestamp: datetime = Field(..., description="Order creation timestamp")
+    timestamp: DateTime = Field(..., description="Order creation timestamp")
     fill_price: Optional[float] = Field(None, gt=0, description="Fill price if executed")
     
-    @validator('order_id')
+    @field_validator('order_id')
+    @classmethod
     def validate_order_id(cls, v):
         """Validate order ID format."""
         if not v or not v.strip():
             raise ValueError("Order ID cannot be empty")
         return v.strip()
     
-    @validator('symbol')
+    @field_validator('symbol')
+    @classmethod
     def validate_symbol(cls, v):
         """Validate ticker symbol format."""
         if not v or not v.strip():
             raise ValueError("Symbol cannot be empty")
         return v.strip().upper()
     
-    @validator('quantity')
+    @field_validator('quantity')
+    @classmethod
     def validate_quantity(cls, v):
         """Validate order quantity."""
         if v == 0:
@@ -178,24 +183,24 @@ class TradeOrder(BaseModel):
             raise ValueError("Order quantity appears unreasonably large")
         return v
     
-    @root_validator
-    def validate_side_quantity_consistency(cls, values):
+    @model_validator(mode='after')
+    def validate_side_quantity_consistency(self):
         """Validate consistency between side and quantity."""
-        side = values.get('side')
-        quantity = values.get('quantity', 0)
+        side = self.side
+        quantity = self.quantity
         
         if side == OrderSide.BUY and quantity < 0:
             raise ValueError("Buy orders must have positive quantity")
         if side == OrderSide.SELL and quantity > 0:
             raise ValueError("Sell orders must have negative quantity")
         
-        return values
+        return self
     
-    @root_validator
-    def validate_fill_price_status(cls, values):
+    @model_validator(mode='after')
+    def validate_fill_price_status(self):
         """Validate fill price is provided when order is filled."""
-        status = values.get('status')
-        fill_price = values.get('fill_price')
+        status = self.status
+        fill_price = self.fill_price
         
         if status in [OrderStatus.FILLED, OrderStatus.PARTIALLY_FILLED] and fill_price is None:
             raise ValueError("Fill price must be provided for filled orders")
@@ -203,9 +208,4 @@ class TradeOrder(BaseModel):
         if status in [OrderStatus.PENDING, OrderStatus.CANCELLED, OrderStatus.REJECTED] and fill_price is not None:
             raise ValueError("Fill price should not be provided for non-filled orders")
         
-        return values
-    
-    class Config:
-        """Pydantic configuration."""
-        validate_assignment = True
-        use_enum_values = True
+        return self
