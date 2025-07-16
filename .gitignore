@@ -1,0 +1,6 @@
+# Ignore local data
+.DS_Store
+.venv/
+.env/
+.env
+*.log

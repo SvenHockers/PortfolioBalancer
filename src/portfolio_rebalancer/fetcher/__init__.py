@@ -1,0 +1,1 @@
+"""Data fetching module for market data retrieval."""
