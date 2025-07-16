@@ -1,1 +1,5 @@
-"""Trade execution module for broker integration and order management."""
+"""Trade execution module for portfolio rebalancing."""
+
+from .brokers.broker_factory import BrokerFactory
+
+__all__ = ["BrokerFactory"]
