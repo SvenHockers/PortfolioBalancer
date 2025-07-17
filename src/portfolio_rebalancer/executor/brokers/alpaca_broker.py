@@ -15,9 +15,9 @@ logger = logging.getLogger(__name__)
 class AlpacaBroker(BaseBroker):
     """Alpaca broker implementation for trade execution."""
     
-    def __init__(self):
+    def __init__(self, config=None):
         """Initialize the Alpaca broker with API credentials."""
-        super().__init__()
+        super().__init__(config)
         
         # Get API credentials from config
         self.api_key = self.config.broker.alpaca_api_key
@@ -35,13 +35,21 @@ class AlpacaBroker(BaseBroker):
             "Content-Type": "application/json"
         }
         
+        # Add SSL verification based on security config
+        self.verify_ssl = getattr(self.config.security, 'ssl_verify', True)
+        
         # Validate API connection
         self._validate_connection()
         
     def _validate_connection(self) -> None:
         """Validate API connection by checking account status."""
         try:
-            response = requests.get(f"{self.base_url}/v2/account", headers=self.headers)
+            response = requests.get(
+                f"{self.base_url}/v2/account", 
+                headers=self.headers,
+                verify=self.verify_ssl,
+                timeout=self.config.broker.alpaca_timeout
+            )
             response.raise_for_status()
             self.logger.info("Successfully connected to Alpaca API")
         except RequestException as e:
@@ -56,7 +64,12 @@ class AlpacaBroker(BaseBroker):
             Dictionary mapping ticker symbols to position quantities
         """
         try:
-            response = requests.get(f"{self.base_url}/v2/positions", headers=self.headers)
+            response = requests.get(
+                f"{self.base_url}/v2/positions", 
+                headers=self.headers,
+                verify=self.verify_ssl,
+                timeout=self.config.broker.alpaca_timeout
+            )
             response.raise_for_status()
             
             positions = {}
@@ -96,7 +109,13 @@ class AlpacaBroker(BaseBroker):
             }
             
             # Send order request
-            response = requests.post(f"{self.base_url}/v2/orders", json=payload, headers=self.headers)
+            response = requests.post(
+                f"{self.base_url}/v2/orders", 
+                json=payload, 
+                headers=self.headers,
+                verify=self.verify_ssl,
+                timeout=self.config.broker.alpaca_timeout
+            )
             response.raise_for_status()
             
             # Extract order ID
@@ -120,7 +139,12 @@ class AlpacaBroker(BaseBroker):
             Order status string
         """
         try:
-            response = requests.get(f"{self.base_url}/v2/orders/{order_id}", headers=self.headers)
+            response = requests.get(
+                f"{self.base_url}/v2/orders/{order_id}", 
+                headers=self.headers,
+                verify=self.verify_ssl,
+                timeout=self.config.broker.alpaca_timeout
+            )
             response.raise_for_status()
             
             order_data = response.json()
@@ -153,7 +177,12 @@ class AlpacaBroker(BaseBroker):
             TradeOrder object with order details
         """
         try:
-            response = requests.get(f"{self.base_url}/v2/orders/{order_id}", headers=self.headers)
+            response = requests.get(
+                f"{self.base_url}/v2/orders/{order_id}", 
+                headers=self.headers,
+                verify=self.verify_ssl,
+                timeout=self.config.broker.alpaca_timeout
+            )
             response.raise_for_status()
             
             order_data = response.json()
@@ -202,7 +231,12 @@ class AlpacaBroker(BaseBroker):
             True if cancellation was successful, False otherwise
         """
         try:
-            response = requests.delete(f"{self.base_url}/v2/orders/{order_id}", headers=self.headers)
+            response = requests.delete(
+                f"{self.base_url}/v2/orders/{order_id}", 
+                headers=self.headers,
+                verify=self.verify_ssl,
+                timeout=self.config.broker.alpaca_timeout
+            )
             
             # 404 means order doesn't exist or is already cancelled/filled
             if response.status_code == 404:

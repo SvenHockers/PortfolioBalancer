@@ -13,9 +13,9 @@ logger = logging.getLogger(__name__)
 class BaseBroker(BrokerInterface, ABC):
     """Base class for broker implementations with common functionality."""
     
-    def __init__(self):
+    def __init__(self, config=None):
         """Initialize the broker with configuration."""
-        self.config = get_config()
+        self.config = config or get_config()
         self.logger = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
         
     def place_order(self, symbol: str, quantity: float, order_type: str) -> str:

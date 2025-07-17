@@ -7,3 +7,6 @@
 
 # Ignore build data
 *.pyc
+
+# Ignore keys and private info
+*.keys

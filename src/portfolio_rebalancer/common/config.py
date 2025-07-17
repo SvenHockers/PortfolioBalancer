@@ -127,6 +127,22 @@ class ExecutorConfig:
     
     
 @dataclass
+class SecurityConfig:
+    """Configuration for security features."""
+    enable_encryption: bool = True
+    credential_storage_path: str = ".credentials"
+    key_storage_path: str = ".keys"
+    credential_rotation_days: int = 90
+    enable_secure_communication: bool = True
+    ssl_verify: bool = True
+    
+    def __post_init__(self):
+        """Validate security configuration after initialization."""
+        if self.credential_rotation_days < 1:
+            raise ValueError("credential_rotation_days must be positive")
+
+
+@dataclass
 class BrokerConfig:
     """Configuration for broker API credentials."""
     # Alpaca configuration
@@ -144,6 +160,9 @@ class BrokerConfig:
     # General broker settings
     max_retries: int = 3
     retry_delay: int = 1
+    
+    # Security settings
+    use_encrypted_credentials: bool = True
     
     def __post_init__(self):
         """Validate broker configuration after initialization."""
@@ -180,7 +199,13 @@ class SchedulerConfig:
             time_parts = self.execution_time.split(":")
             if len(time_parts) != 2:
                 raise ValueError()
-            hour, minute = int(time_parts[0]), int(time_parts[1])
+            hour_str, minute_str = time_parts[0], time_parts[1]
+            
+            # Check format: must be exactly 2 digits for both hour and minute
+            if len(hour_str) != 2 or len(minute_str) != 2:
+                raise ValueError()
+            
+            hour, minute = int(hour_str), int(minute_str)
             if not (0 <= hour <= 23 and 0 <= minute <= 59):
                 raise ValueError()
         except (ValueError, IndexError):
@@ -240,6 +265,7 @@ class Config:
     scheduler: SchedulerConfig = field(default_factory=SchedulerConfig)
     logging: LoggingConfig = field(default_factory=LoggingConfig)
     monitoring: MonitoringConfig = field(default_factory=MonitoringConfig)
+    security: SecurityConfig = field(default_factory=SecurityConfig)
     
     # Global settings
     environment: str = "development"  # "development", "staging", "production"
@@ -266,139 +292,328 @@ class Config:
         return result
 
 
+class ConfigurationError(Exception):
+    """Custom exception for configuration errors."""
+    pass
+
+
 class ConfigManager:
     """Manages configuration loading from environment variables and files."""
     
-    def __init__(self, config_file: Optional[str] = None):
+    # Environment variable mapping with type conversion
+    ENV_MAPPING = {
+        # Data configuration
+        'data.tickers': ('TICKERS', lambda x: x.split(',') if x else []),
+        'data.storage_type': ('STORAGE_TYPE', str),
+        'data.storage_path': ('STORAGE_PATH', str),
+        'data.backfill_days': ('BACKFILL_DAYS', int),
+        'data.data_quality_checks': ('DATA_QUALITY_CHECKS', lambda x: x.lower() in ('true', '1', 'yes')),
+        'data.max_missing_days': ('MAX_MISSING_DAYS', int),
+        'data.price_change_threshold': ('PRICE_CHANGE_THRESHOLD', float),
+        
+        # Optimization configuration
+        'optimization.user_age': ('USER_AGE', int),
+        'optimization.risk_free_rate': ('RISK_FREE_RATE', float),
+        'optimization.lookback_days': ('LOOKBACK_DAYS', int),
+        'optimization.min_weight': ('MIN_WEIGHT', float),
+        'optimization.max_weight': ('MAX_WEIGHT', float),
+        'optimization.safe_portfolio_bonds': ('SAFE_PORTFOLIO_BONDS', float),
+        'optimization.optimization_method': ('OPTIMIZATION_METHOD', str),
+        'optimization.rebalance_frequency': ('REBALANCE_FREQUENCY', str),
+        'optimization.covariance_regularization': ('COVARIANCE_REGULARIZATION', float),
+        
+        # Executor configuration
+        'executor.rebalance_threshold': ('REBALANCE_THRESHOLD', float),
+        'executor.rebalance_absolute_threshold': ('REBALANCE_ABSOLUTE_THRESHOLD', float),
+        'executor.order_type': ('ORDER_TYPE', str),
+        'executor.broker_type': ('BROKER_TYPE', str),
+        'executor.dry_run': ('DRY_RUN', lambda x: x.lower() in ('true', '1', 'yes')),
+        'executor.max_position_size': ('MAX_POSITION_SIZE', float),
+        'executor.trading_hours_only': ('TRADING_HOURS_ONLY', lambda x: x.lower() in ('true', '1', 'yes')),
+        'executor.order_timeout': ('ORDER_TIMEOUT', int),
+        
+        # Broker configuration
+        'broker.alpaca_api_key': ('ALPACA_API_KEY', str),
+        'broker.alpaca_secret_key': ('ALPACA_SECRET_KEY', str),
+        'broker.alpaca_base_url': ('ALPACA_BASE_URL', str),
+        'broker.alpaca_timeout': ('ALPACA_TIMEOUT', int),
+        'broker.ib_host': ('IB_HOST', str),
+        'broker.ib_port': ('IB_PORT', int),
+        'broker.ib_client_id': ('IB_CLIENT_ID', int),
+        'broker.ib_timeout': ('IB_TIMEOUT', int),
+        'broker.max_retries': ('BROKER_MAX_RETRIES', int),
+        'broker.retry_delay': ('BROKER_RETRY_DELAY', int),
+        'broker.use_encrypted_credentials': ('USE_ENCRYPTED_CREDENTIALS', lambda x: x.lower() in ('true', '1', 'yes')),
+        
+        # Security configuration
+        'security.enable_encryption': ('ENABLE_ENCRYPTION', lambda x: x.lower() in ('true', '1', 'yes')),
+        'security.credential_storage_path': ('CREDENTIAL_STORAGE_PATH', str),
+        'security.key_storage_path': ('KEY_STORAGE_PATH', str),
+        'security.credential_rotation_days': ('CREDENTIAL_ROTATION_DAYS', int),
+        'security.enable_secure_communication': ('ENABLE_SECURE_COMMUNICATION', lambda x: x.lower() in ('true', '1', 'yes')),
+        'security.ssl_verify': ('SSL_VERIFY', lambda x: x.lower() in ('true', '1', 'yes')),
+        
+        # Scheduler configuration
+        'scheduler.execution_time': ('EXECUTION_TIME', str),
+        'scheduler.timezone': ('TIMEZONE', str),
+        'scheduler.retry_attempts': ('RETRY_ATTEMPTS', int),
+        'scheduler.retry_delay': ('RETRY_DELAY', int),
+        'scheduler.health_check_interval': ('HEALTH_CHECK_INTERVAL', int),
+        'scheduler.pipeline_timeout': ('PIPELINE_TIMEOUT', int),
+        'scheduler.enable_notifications': ('ENABLE_NOTIFICATIONS', lambda x: x.lower() in ('true', '1', 'yes')),
+        'scheduler.notification_webhook': ('NOTIFICATION_WEBHOOK', str),
+        
+        # Logging configuration
+        'logging.level': ('LOG_LEVEL', str),
+        'logging.format': ('LOG_FORMAT', str),
+        'logging.file_path': ('LOG_FILE_PATH', str),
+        'logging.max_file_size': ('LOG_MAX_FILE_SIZE', int),
+        'logging.backup_count': ('LOG_BACKUP_COUNT', int),
+        'logging.enable_console': ('LOG_ENABLE_CONSOLE', lambda x: x.lower() in ('true', '1', 'yes')),
+        'logging.correlation_id_header': ('LOG_CORRELATION_ID_HEADER', str),
+        
+        # Monitoring configuration
+        'monitoring.enable_metrics': ('ENABLE_METRICS', lambda x: x.lower() in ('true', '1', 'yes')),
+        'monitoring.metrics_port': ('METRICS_PORT', int),
+        'monitoring.metrics_path': ('METRICS_PATH', str),
+        'monitoring.enable_health_endpoint': ('ENABLE_HEALTH_ENDPOINT', lambda x: x.lower() in ('true', '1', 'yes')),
+        'monitoring.health_path': ('HEALTH_PATH', str),
+        
+        # Global configuration
+        'environment': ('ENVIRONMENT', str),
+        'debug': ('DEBUG', lambda x: x.lower() in ('true', '1', 'yes')),
+    }
+    
+    def __init__(self, config_file: Optional[str] = None, auto_discover: bool = True):
+        """
+        Initialize ConfigManager.
+        
+        Args:
+            config_file: Path to configuration file
+            auto_discover: If True, automatically discover config files in common locations
+        """
         self.config_file = config_file
+        self.auto_discover = auto_discover
         self._config = None
+        self._logger = logging.getLogger(__name__)
     
     def load_config(self) -> Config:
         """Load configuration from environment variables and optional config file."""
         if self._config is not None:
             return self._config
             
-        # Start with default config
-        config = Config()
+        try:
+            # Start with default config
+            config = Config()
+            
+            # Auto-discover config file if not provided
+            if not self.config_file and self.auto_discover:
+                self.config_file = self._discover_config_file()
+            
+            # Load from config file if available
+            if self.config_file and Path(self.config_file).exists():
+                config = self._load_from_file(config)
+                self._logger.info(f"Loaded configuration from file: {self.config_file}")
+            
+            # Override with environment variables
+            config = self._load_from_env(config)
+            
+            # Post-initialization validation will be called by dataclass __post_init__
+            self._config = config
+            self._logger.info("Configuration loaded successfully")
+            return config
+            
+        except Exception as e:
+            raise ConfigurationError(f"Failed to load configuration: {e}") from e
+    
+    def _discover_config_file(self) -> Optional[str]:
+        """Auto-discover configuration file in common locations."""
+        search_paths = [
+            "config.json",
+            "config.yaml", 
+            "config.yml",
+            ".config/portfolio_rebalancer.json",
+            ".config/portfolio_rebalancer.yaml",
+            os.path.expanduser("~/.portfolio_rebalancer.json"),
+            os.path.expanduser("~/.portfolio_rebalancer.yaml"),
+        ]
         
-        # Load from config file if provided
-        if self.config_file and Path(self.config_file).exists():
-            config = self._load_from_file(config)
+        for path in search_paths:
+            if Path(path).exists():
+                self._logger.info(f"Auto-discovered config file: {path}")
+                return path
         
-        # Override with environment variables
-        config = self._load_from_env(config)
-        
-        # Validate configuration
-        self._validate_config(config)
-        
-        self._config = config
-        return config
+        return None
     
     def _load_from_file(self, config: Config) -> Config:
-        """Load configuration from JSON file."""
+        """Load configuration from JSON or YAML file."""
+        file_path = Path(self.config_file)
+        
         try:
-            with open(self.config_file, 'r') as f:
-                file_config = json.load(f)
+            with open(file_path, 'r', encoding='utf-8') as f:
+                if file_path.suffix.lower() in ['.yaml', '.yml']:
+                    try:
+                        file_config = yaml.safe_load(f)
+                    except ImportError:
+                        raise ConfigurationError(
+                            "PyYAML is required to load YAML configuration files. "
+                            "Install with: pip install PyYAML"
+                        )
+                elif file_path.suffix.lower() == '.json':
+                    file_config = json.load(f)
+                else:
+                    # Try JSON first, then YAML
+                    content = f.read()
+                    try:
+                        file_config = json.loads(content)
+                    except json.JSONDecodeError:
+                        try:
+                            file_config = yaml.safe_load(content)
+                        except ImportError:
+                            raise ConfigurationError(
+                                "Could not parse configuration file. "
+                                "Ensure it's valid JSON or install PyYAML for YAML support."
+                            )
+            
+            if not isinstance(file_config, dict):
+                raise ConfigurationError("Configuration file must contain a JSON object or YAML mapping")
             
             # Update config with file values
-            for section, values in file_config.items():
-                if hasattr(config, section):
-                    section_config = getattr(config, section)
-                    for key, value in values.items():
-                        if hasattr(section_config, key):
-                            setattr(section_config, key, value)
+            self._update_config_from_dict(config, file_config)
                             
-        except (json.JSONDecodeError, FileNotFoundError) as e:
-            raise ValueError(f"Error loading config file {self.config_file}: {e}")
+        except (json.JSONDecodeError, yaml.YAMLError) as e:
+            raise ConfigurationError(f"Error parsing config file {self.config_file}: {e}")
+        except FileNotFoundError:
+            raise ConfigurationError(f"Config file not found: {self.config_file}")
+        except Exception as e:
+            raise ConfigurationError(f"Error loading config file {self.config_file}: {e}")
         
         return config
+    
+    def _update_config_from_dict(self, config: Config, config_dict: Dict[str, Any]) -> None:
+        """Update configuration object from dictionary."""
+        for section, values in config_dict.items():
+            if hasattr(config, section) and isinstance(values, dict):
+                section_config = getattr(config, section)
+                for key, value in values.items():
+                    if hasattr(section_config, key):
+                        # Type conversion based on current field type
+                        current_value = getattr(section_config, key)
+                        if current_value is not None:
+                            target_type = type(current_value)
+                            if target_type == bool and isinstance(value, str):
+                                value = value.lower() in ('true', '1', 'yes', 'on')
+                            elif target_type in (int, float) and isinstance(value, str):
+                                value = target_type(value)
+                            elif target_type == list and isinstance(value, str):
+                                value = value.split(',')
+                        setattr(section_config, key, value)
+            elif hasattr(config, section):
+                # Direct field assignment
+                setattr(config, section, value)
     
     def _load_from_env(self, config: Config) -> Config:
-        """Load configuration from environment variables."""
-        # Data configuration
-        if os.getenv("TICKERS"):
-            config.data.tickers = os.getenv("TICKERS").split(",")
-        config.data.storage_type = os.getenv("STORAGE_TYPE", config.data.storage_type)
-        config.data.storage_path = os.getenv("STORAGE_PATH", config.data.storage_path)
-        config.data.backfill_days = int(os.getenv("BACKFILL_DAYS", config.data.backfill_days))
-        
-        # Optimization configuration
-        config.optimization.user_age = int(os.getenv("USER_AGE", config.optimization.user_age))
-        config.optimization.risk_free_rate = float(os.getenv("RISK_FREE_RATE", config.optimization.risk_free_rate))
-        config.optimization.lookback_days = int(os.getenv("LOOKBACK_DAYS", config.optimization.lookback_days))
-        config.optimization.min_weight = float(os.getenv("MIN_WEIGHT", config.optimization.min_weight))
-        config.optimization.max_weight = float(os.getenv("MAX_WEIGHT", config.optimization.max_weight))
-        config.optimization.safe_portfolio_bonds = float(os.getenv("SAFE_PORTFOLIO_BONDS", config.optimization.safe_portfolio_bonds))
-        
-        # Executor configuration
-        config.executor.rebalance_threshold = float(os.getenv("REBALANCE_THRESHOLD", config.executor.rebalance_threshold))
-        config.executor.order_type = os.getenv("ORDER_TYPE", config.executor.order_type)
-        config.executor.broker_type = os.getenv("BROKER_TYPE", config.executor.broker_type)
-        
-        # Broker configuration
-        config.broker.alpaca_api_key = os.getenv("ALPACA_API_KEY")
-        config.broker.alpaca_secret_key = os.getenv("ALPACA_SECRET_KEY")
-        config.broker.alpaca_base_url = os.getenv("ALPACA_BASE_URL", config.broker.alpaca_base_url)
-        config.broker.ib_host = os.getenv("IB_HOST", config.broker.ib_host)
-        config.broker.ib_port = int(os.getenv("IB_PORT", config.broker.ib_port))
-        config.broker.ib_client_id = int(os.getenv("IB_CLIENT_ID", config.broker.ib_client_id))
-        
-        # Scheduler configuration
-        config.scheduler.execution_time = os.getenv("EXECUTION_TIME", config.scheduler.execution_time)
-        config.scheduler.timezone = os.getenv("TIMEZONE", config.scheduler.timezone)
-        config.scheduler.retry_attempts = int(os.getenv("RETRY_ATTEMPTS", config.scheduler.retry_attempts))
-        config.scheduler.retry_delay = int(os.getenv("RETRY_DELAY", config.scheduler.retry_delay))
-        
-        # Logging configuration
-        config.logging.level = os.getenv("LOG_LEVEL", config.logging.level)
-        config.logging.format = os.getenv("LOG_FORMAT", config.logging.format)
-        config.logging.file_path = os.getenv("LOG_FILE_PATH")
+        """Load configuration from environment variables with type conversion."""
+        for config_path, (env_var, converter) in self.ENV_MAPPING.items():
+            env_value = os.getenv(env_var)
+            if env_value is not None:
+                try:
+                    # Convert the value using the specified converter
+                    if converter == str and env_value == '':
+                        # Handle empty strings for optional string fields
+                        converted_value = None
+                    else:
+                        converted_value = converter(env_value)
+                    
+                    # Set the value in the config object
+                    self._set_nested_value(config, config_path, converted_value)
+                    
+                except (ValueError, TypeError) as e:
+                    self._logger.warning(
+                        f"Failed to convert environment variable {env_var}='{env_value}': {e}"
+                    )
         
         return config
     
-    def _validate_config(self, config: Config) -> None:
-        """Validate configuration parameters."""
+    def _set_nested_value(self, config: Config, path: str, value: Any) -> None:
+        """Set a nested value in the configuration object."""
+        parts = path.split('.')
+        obj = config
+        
+        # Navigate to the parent object
+        for part in parts[:-1]:
+            obj = getattr(obj, part)
+        
+        # Set the final value
+        setattr(obj, parts[-1], value)
+    
+    def reload_config(self) -> Config:
+        """Reload configuration from sources."""
+        self._config = None
+        return self.load_config()
+    
+    def save_config(self, config: Config, file_path: str, format: str = 'json') -> None:
+        """Save configuration to file."""
+        config_dict = config.to_dict()
+        
+        try:
+            with open(file_path, 'w', encoding='utf-8') as f:
+                if format.lower() == 'yaml':
+                    try:
+                        yaml.dump(config_dict, f, default_flow_style=False, indent=2)
+                    except ImportError:
+                        raise ConfigurationError(
+                            "PyYAML is required to save YAML configuration files. "
+                            "Install with: pip install PyYAML"
+                        )
+                else:
+                    json.dump(config_dict, f, indent=2, default=str)
+            
+            self._logger.info(f"Configuration saved to {file_path}")
+            
+        except Exception as e:
+            raise ConfigurationError(f"Failed to save configuration to {file_path}: {e}")
+    
+    def validate_runtime_config(self, config: Config) -> List[str]:
+        """Validate configuration for runtime requirements."""
         errors = []
         
-        # Only validate required fields if they're needed for actual execution
-        # During development/testing, these can be empty
-        validate_required = os.getenv("VALIDATE_REQUIRED_CONFIG", "false").lower() == "true"
-        
-        if validate_required:
+        # Check required fields for production
+        if config.environment == "production":
             if not config.data.tickers:
-                errors.append("TICKERS must be specified")
+                errors.append("TICKERS must be specified for production environment")
             
-            if config.executor.broker_type == "alpaca":
+            if config.executor.broker_type == BrokerType.ALPACA.value:
                 if not config.broker.alpaca_api_key or not config.broker.alpaca_secret_key:
                     errors.append("ALPACA_API_KEY and ALPACA_SECRET_KEY must be set for Alpaca broker")
         
-        # Validate ranges
-        if not 0 <= config.optimization.min_weight <= 1:
-            errors.append("MIN_WEIGHT must be between 0 and 1")
+        # Validate enum values
+        try:
+            StorageType(config.data.storage_type)
+        except ValueError:
+            errors.append(f"Invalid storage_type: {config.data.storage_type}")
         
-        if not 0 <= config.optimization.max_weight <= 1:
-            errors.append("MAX_WEIGHT must be between 0 and 1")
+        try:
+            OrderType(config.executor.order_type)
+        except ValueError:
+            errors.append(f"Invalid order_type: {config.executor.order_type}")
         
-        if config.optimization.min_weight >= config.optimization.max_weight:
-            errors.append("MIN_WEIGHT must be less than MAX_WEIGHT")
+        try:
+            BrokerType(config.executor.broker_type)
+        except ValueError:
+            errors.append(f"Invalid broker_type: {config.executor.broker_type}")
         
-        if not 0 <= config.executor.rebalance_threshold <= 1:
-            errors.append("REBALANCE_THRESHOLD must be between 0 and 1")
+        try:
+            LogLevel(config.logging.level)
+        except ValueError:
+            errors.append(f"Invalid log_level: {config.logging.level}")
         
-        if config.executor.order_type not in ["market", "limit"]:
-            errors.append("ORDER_TYPE must be 'market' or 'limit'")
+        try:
+            LogFormat(config.logging.format)
+        except ValueError:
+            errors.append(f"Invalid log_format: {config.logging.format}")
         
-        if config.executor.broker_type not in ["alpaca", "ib"]:
-            errors.append("BROKER_TYPE must be 'alpaca' or 'ib'")
-        
-        if config.logging.level not in ["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]:
-            errors.append("LOG_LEVEL must be one of: DEBUG, INFO, WARNING, ERROR, CRITICAL")
-        
-        if config.logging.format not in ["json", "text"]:
-            errors.append("LOG_FORMAT must be 'json' or 'text'")
-        
-        if errors:
-            raise ValueError("Configuration validation errors:\n" + "\n".join(f"- {error}" for error in errors))
+        return errors
 
 
 # Global config manager instance

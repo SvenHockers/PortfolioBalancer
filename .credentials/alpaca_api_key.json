@@ -1,0 +1,12 @@
+{
+  "encrypted_data": "Z0FBQUFBQm9lV3NaWjFWelIzaHRZV1VoM0tEX3N0UzlXdmIyN2lMVjhfOEprNFdOYVBiMXhIck1EWm9uUk9oTmVyR05PM3dNMnc5Ty1RN2RheE1UQVRGdk1Wa21QcVptYlE9PQ==",
+  "metadata": {
+    "created_at": "2025-07-17T21:25:22.289166",
+    "expires_at": null,
+    "rotation_interval_days": 90,
+    "last_rotated": "2025-07-17T21:28:57.197742",
+    "rotation_count": 3
+  },
+  "key_id": "523a1930145b25118988df531ed30efb",
+  "algorithm": "fernet"
+}
