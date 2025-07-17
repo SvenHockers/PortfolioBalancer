@@ -1,0 +1,253 @@
+# Portfolio Rebalancer - Kubernetes Configuration Example
+# This file shows how to configure the system for Kubernetes deployment
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: portfolio-rebalancer-config
+  namespace: portfolio-rebalancer
+data:
+  # Environment settings
+  ENVIRONMENT: "production"
+  DEBUG: "false"
+  DRY_RUN: "false"
+  
+  # Data configuration
+  TICKERS: "SPY,QQQ,VTI,VXUS,BND,VEA,VWO,VTEB,VGIT"
+  STORAGE_TYPE: "parquet"
+  STORAGE_PATH: "/data/portfolio"
+  BACKFILL_DAYS: "504"
+  DATA_QUALITY_CHECKS: "true"
+  MAX_MISSING_DAYS: "3"
+  PRICE_CHANGE_THRESHOLD: "0.3"
+  
+  # Optimization configuration
+  USER_AGE: "35"
+  RISK_FREE_RATE: "0.025"
+  LOOKBACK_DAYS: "252"
+  MIN_WEIGHT: "0.02"
+  MAX_WEIGHT: "0.30"
+  SAFE_PORTFOLIO_BONDS: "0.7"
+  OPTIMIZATION_METHOD: "sharpe"
+  COVARIANCE_REGULARIZATION: "0.001"
+  
+  # Broker configuration
+  BROKER_TYPE: "alpaca"
+  ALPACA_BASE_URL: "https://api.alpaca.markets"
+  ALPACA_TIMEOUT: "60"
+  BROKER_MAX_RETRIES: "5"
+  BROKER_RETRY_DELAY: "2"
+  
+  # Execution configuration
+  REBALANCE_THRESHOLD: "0.03"
+  REBALANCE_ABSOLUTE_THRESHOLD: "500"
+  ORDER_TYPE: "limit"
+  MAX_POSITION_SIZE: "0.25"
+  TRADING_HOURS_ONLY: "true"
+  ORDER_TIMEOUT: "600"
+  
+  # Scheduler configuration
+  EXECUTION_TIME: "16:30"
+  TIMEZONE: "America/New_York"
+  RETRY_ATTEMPTS: "5"
+  RETRY_DELAY: "600"
+  HEALTH_CHECK_INTERVAL: "300"
+  PIPELINE_TIMEOUT: "7200"
+  ENABLE_NOTIFICATIONS: "true"
+  
+  # Logging configuration
+  LOG_LEVEL: "INFO"
+  LOG_FORMAT: "json"
+  LOG_FILE_PATH: "/logs/portfolio_rebalancer.log"
+  LOG_MAX_FILE_SIZE: "52428800"
+  LOG_BACKUP_COUNT: "10"
+  LOG_ENABLE_CONSOLE: "true"
+  
+  # Monitoring configuration
+  ENABLE_METRICS: "true"
+  METRICS_PORT: "8000"
+  METRICS_PATH: "/metrics"
+  ENABLE_HEALTH_ENDPOINT: "true"
+  HEALTH_PATH: "/health"
+  
+  # Performance configuration
+  ENABLE_PARALLEL_FETCH: "true"
+  MAX_WORKER_THREADS: "4"
+  CACHE_OPTIMIZATION_RESULTS: "true"
+  CACHE_TTL_SECONDS: "3600"
+  MAX_MEMORY_USAGE_MB: "2048"
+  
+  # Security configuration
+  ENCRYPT_SENSITIVE_DATA: "true"
+  ENABLE_AUDIT_LOGGING: "true"
+  COMPLIANCE_MODE: "true"
+
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: portfolio-rebalancer-secrets
+  namespace: portfolio-rebalancer
+type: Opaque
+data:
+  # Base64 encoded values - replace with your actual encoded credentials
+  # To encode: echo -n "your_actual_key" | base64
+  alpaca-api-key: a1234567890  # your_actual_api_key_here
+  alpaca-secret-key: b1234567890  # your_actual_secret_key_here
+  notification-webhook: c1234567890  # https://your-webhook-endpoint.com/portfolio-alerts
+  encryption-key: d1234567890  # your_encryption_key_here
+
+---
+# Example Deployment with ConfigMap and Secret references
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: portfolio-scheduler
+  namespace: portfolio-rebalancer
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: portfolio-scheduler
+  template:
+    metadata:
+      labels:
+        app: portfolio-scheduler
+    spec:
+      containers:
+      - name: scheduler
+        image: portfolio-rebalancer-scheduler:latest
+        ports:
+        - containerPort: 8083
+        env:
+        # Load configuration from ConfigMap
+        - name: ENVIRONMENT
+          valueFrom:
+            configMapKeyRef:
+              name: portfolio-rebalancer-config
+              key: ENVIRONMENT
+        - name: TICKERS
+          valueFrom:
+            configMapKeyRef:
+              name: portfolio-rebalancer-config
+              key: TICKERS
+        - name: USER_AGE
+          valueFrom:
+            configMapKeyRef:
+              name: portfolio-rebalancer-config
+              key: USER_AGE
+        - name: BROKER_TYPE
+          valueFrom:
+            configMapKeyRef:
+              name: portfolio-rebalancer-config
+              key: BROKER_TYPE
+        - name: LOG_LEVEL
+          valueFrom:
+            configMapKeyRef:
+              name: portfolio-rebalancer-config
+              key: LOG_LEVEL
+        # Load secrets
+        - name: ALPACA_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: portfolio-rebalancer-secrets
+              key: alpaca-api-key
+        - name: ALPACA_SECRET_KEY
+          valueFrom:
+            secretKeyRef:
+              name: portfolio-rebalancer-secrets
+              key: alpaca-secret-key
+        - name: NOTIFICATION_WEBHOOK
+          valueFrom:
+            secretKeyRef:
+              name: portfolio-rebalancer-secrets
+              key: notification-webhook
+        # Volume mounts
+        volumeMounts:
+        - name: data-storage
+          mountPath: /data
+        - name: log-storage
+          mountPath: /logs
+        # Resource limits
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "100m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+        # Health checks
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8083
+          initialDelaySeconds: 30
+          periodSeconds: 30
+        readinessProbe:
+          httpGet:
+            path: /ready
+            port: 8083
+          initialDelaySeconds: 10
+          periodSeconds: 10
+      volumes:
+      - name: data-storage
+        persistentVolumeClaim:
+          claimName: portfolio-data-pvc
+      - name: log-storage
+        persistentVolumeClaim:
+          claimName: portfolio-logs-pvc
+
+---
+# Example CronJob configuration
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: portfolio-rebalancer-daily
+  namespace: portfolio-rebalancer
+spec:
+  schedule: "30 16 * * 1-5" 
+  timezone: "Europe/Amsterdam"
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          containers:
+          - name: portfolio-executor
+            image: portfolio-rebalancer-scheduler:latest
+            command: ["python", "-m", "src.portfolio_rebalancer.services.scheduler_service", "--run-once"]
+            envFrom:
+            - configMapRef:
+                name: portfolio-rebalancer-config
+            env:
+            - name: ALPACA_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: portfolio-rebalancer-secrets
+                  key: alpaca-api-key
+            - name: ALPACA_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: portfolio-rebalancer-secrets
+                  key: alpaca-secret-key
+            volumeMounts:
+            - name: data-storage
+              mountPath: /data
+            - name: log-storage
+              mountPath: /logs
+            resources:
+              requests:
+                memory: "512Mi"
+                cpu: "200m"
+              limits:
+                memory: "1Gi"
+                cpu: "1000m"
+          volumes:
+          - name: data-storage
+            persistentVolumeClaim:
+              claimName: portfolio-data-pvc
+          - name: log-storage
+            persistentVolumeClaim:
+              claimName: portfolio-logs-pvc
+          restartPolicy: OnFailure
+  successfulJobsHistoryLimit: 5
+  failedJobsHistoryLimit: 3
