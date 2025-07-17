@@ -41,3 +41,12 @@ data:
   LOG_LEVEL: "INFO"
   LOG_FORMAT: "json"
   LOG_FILE_PATH: "/app/logs/portfolio_rebalancer.log"
+  
+  # Security Configuration
+  USE_ENCRYPTED_CREDENTIALS: "true"
+  ENABLE_ENCRYPTION: "true"
+  CREDENTIAL_STORAGE_PATH: "/app/.credentials"
+  KEY_STORAGE_PATH: "/app/.keys"
+  CREDENTIAL_ROTATION_DAYS: "90"
+  ENABLE_SECURE_COMMUNICATION: "true"
+  SSL_VERIFY: "true"
