@@ -1,22 +1,21 @@
 # Customization Guide
 
-This guide explains how to extend and customize the Portfolio Rebalancer system to meet specific requirements.
+Extend the Portfolio Rebalancer with custom data providers, optimization strategies, brokers, and storage backends.
 
-## Architecture Overview
+## Architecture
 
-The system is built with a plugin-based architecture that allows easy customization of:
-- Data providers (market data sources)
-- Optimization strategies (portfolio allocation algorithms)
-- Broker interfaces (trading execution)
-- Storage backends (data persistence)
-- Glide path logic (age-based allocation)
+Modular, plugin-based design with extensible components:
+
+- **Data Providers**: Market data sources (yfinance, Alpha Vantage, custom APIs)
+- **Optimization Strategies**: Portfolio algorithms (Sharpe, Risk Parity, Black-Litterman)
+- **Broker Interfaces**: Trading platforms (Alpaca, Interactive Brokers, custom)
+- **Storage Backends**: Data persistence (Parquet, SQLite, PostgreSQL, Redis, S3)
+- **Glide Path Logic**: Age-based allocation strategies
+- **Monitoring**: Custom metrics and alerting
 
 ## Custom Data Providers
 
-### Creating a Custom Data Provider
-
-1. **Implement the DataProvider interface**:
-
+### Basic Implementation
 ```python
 # src/portfolio_rebalancer/fetcher/custom_provider.py
 from datetime import date
@@ -25,160 +24,39 @@ import pandas as pd
 from ..common.interfaces import DataProvider
 
 class CustomDataProvider(DataProvider):
-    """Custom data provider implementation."""
-    
     def __init__(self, api_key: str, base_url: str):
         self.api_key = api_key
         self.base_url = base_url
     
     def fetch_prices(self, tickers: List[str], start_date: date, end_date: date) -> pd.DataFrame:
-        """Fetch price data from custom API."""
+        # Your custom API logic here
         all_data = []
-        
         for ticker in tickers:
-            # Your custom API logic here
             response = self._call_api(ticker, start_date, end_date)
             ticker_data = self._parse_response(response, ticker)
             all_data.append(ticker_data)
-        
         return pd.concat(all_data, ignore_index=False)
-    
-    def _call_api(self, ticker: str, start_date: date, end_date: date):
-        """Make API call to custom data source."""
-        import requests
-        
-        url = f"{self.base_url}/prices/{ticker}"
-        params = {
-            'start': start_date.isoformat(),
-            'end': end_date.isoformat(),
-            'api_key': self.api_key
-        }
-        
-        response = requests.get(url, params=params)
-        response.raise_for_status()
-        return response.json()
-    
-    def _parse_response(self, response: dict, ticker: str) -> pd.DataFrame:
-        """Parse API response into expected DataFrame format."""
-        data = []
-        for item in response['prices']:
-            data.append({
-                'date': pd.to_datetime(item['date']).date(),
-                'symbol': ticker,
-                'adjusted_close': float(item['close']),
-                'volume': int(item['volume'])
-            })
-        
-        df = pd.DataFrame(data)
-        return df.set_index(['date', 'symbol'])
 ```
 
-2. **Register the custom provider**:
-
+### Registration
 ```python
 # src/portfolio_rebalancer/fetcher/__init__.py
-from .yfinance_provider import YFinanceProvider
-from .custom_provider import CustomDataProvider
-
 def get_data_provider(provider_type: str, **kwargs):
-    """Factory function for data providers."""
-    if provider_type == 'yfinance':
-        return YFinanceProvider(**kwargs)
-    elif provider_type == 'custom':
+    if provider_type == 'custom':
         return CustomDataProvider(**kwargs)
-    else:
-        raise ValueError(f"Unknown provider type: {provider_type}")
+    # ... other providers
 ```
 
-3. **Configure the provider**:
-
+### Configuration
 ```bash
-# In .env file
 DATA_PROVIDER=custom
 CUSTOM_API_KEY=your_api_key
 CUSTOM_BASE_URL=https://api.example.com/v1
 ```
 
-### Example: Alpha Vantage Provider
-
-```python
-# src/portfolio_rebalancer/fetcher/alpha_vantage_provider.py
-import time
-from datetime import date
-from typing import List
-import pandas as pd
-import requests
-from ..common.interfaces import DataProvider
-
-class AlphaVantageProvider(DataProvider):
-    """Alpha Vantage data provider implementation."""
-    
-    def __init__(self, api_key: str, calls_per_minute: int = 5):
-        self.api_key = api_key
-        self.calls_per_minute = calls_per_minute
-        self.call_interval = 60 / calls_per_minute
-        self.last_call_time = 0
-    
-    def fetch_prices(self, tickers: List[str], start_date: date, end_date: date) -> pd.DataFrame:
-        """Fetch price data from Alpha Vantage API."""
-        all_data = []
-        
-        for ticker in tickers:
-            self._rate_limit()
-            
-            url = "https://www.alphavantage.co/query"
-            params = {
-                'function': 'TIME_SERIES_DAILY_ADJUSTED',
-                'symbol': ticker,
-                'outputsize': 'full',
-                'apikey': self.api_key
-            }
-            
-            response = requests.get(url, params=params)
-            data = response.json()
-            
-            if 'Time Series (Daily)' in data:
-                ticker_data = self._parse_alpha_vantage_data(data, ticker, start_date, end_date)
-                all_data.append(ticker_data)
-        
-        return pd.concat(all_data, ignore_index=False) if all_data else pd.DataFrame()
-    
-    def _rate_limit(self):
-        """Implement rate limiting for API calls."""
-        current_time = time.time()
-        time_since_last_call = current_time - self.last_call_time
-        
-        if time_since_last_call < self.call_interval:
-            time.sleep(self.call_interval - time_since_last_call)
-        
-        self.last_call_time = time.time()
-    
-    def _parse_alpha_vantage_data(self, data: dict, ticker: str, start_date: date, end_date: date) -> pd.DataFrame:
-        """Parse Alpha Vantage response data."""
-        time_series = data['Time Series (Daily)']
-        parsed_data = []
-        
-        for date_str, values in time_series.items():
-            price_date = pd.to_datetime(date_str).date()
-            
-            if start_date <= price_date <= end_date:
-                parsed_data.append({
-                    'date': price_date,
-                    'symbol': ticker,
-                    'adjusted_close': float(values['5. adjusted close']),
-                    'volume': int(values['6. volume'])
-                })
-        
-        df = pd.DataFrame(parsed_data)
-        return df.set_index(['date', 'symbol'])
-```
-
 ## Custom Optimization Strategies
 
-### Creating a Custom Optimizer
-
-1. **Implement the OptimizationStrategy interface**:
-
+### Basic Implementation
 ```python
 # src/portfolio_rebalancer/optimizer/custom_optimizer.py
 from typing import Dict
@@ -187,236 +65,71 @@ import numpy as np
 from ..common.interfaces import OptimizationStrategy
 
 class MomentumOptimizer(OptimizationStrategy):
-    """Momentum-based optimization strategy."""
-    
     def __init__(self, lookback_months: int = 12, top_n: int = 3):
         self.lookback_months = lookback_months
         self.top_n = top_n
     
     def optimize(self, returns: pd.DataFrame, constraints: Dict) -> Dict[str, float]:
-        """Optimize portfolio based on momentum signals."""
-        # Calculate momentum scores (12-month returns)
-        momentum_scores = returns.tail(252).mean() * 252  # Annualized returns
-        
-        # Select top N assets by momentum
+        # Calculate momentum scores
+        momentum_scores = returns.tail(252).mean() * 252
         top_assets = momentum_scores.nlargest(self.top_n)
         
         # Equal weight among top assets
         weight = 1.0 / len(top_assets)
-        allocations = {asset: weight for asset in top_assets.index}
-        
-        # Fill remaining assets with zero weight
-        for asset in returns.columns:
-            if asset not in allocations:
-                allocations[asset] = 0.0
-        
-        return allocations
+        return {asset: weight for asset in top_assets.index}
 
 class RiskParityOptimizer(OptimizationStrategy):
-    """Risk parity optimization strategy."""
-    
     def optimize(self, returns: pd.DataFrame, constraints: Dict) -> Dict[str, float]:
-        """Optimize portfolio using risk parity approach."""
-        # Calculate covariance matrix
-        cov_matrix = returns.cov() * 252  # Annualized
-        
-        # Calculate inverse volatility weights
+        # Inverse volatility weights
+        cov_matrix = returns.cov() * 252
         volatilities = np.sqrt(np.diag(cov_matrix))
-        inv_vol_weights = 1 / volatilities
-        
-        # Normalize to sum to 1
-        weights = inv_vol_weights / inv_vol_weights.sum()
-        
-        # Apply constraints
-        min_weight = constraints.get('min_weight', 0.0)
-        max_weight = constraints.get('max_weight', 1.0)
-        
-        weights = np.clip(weights, min_weight, max_weight)
-        weights = weights / weights.sum()  # Renormalize
-        
+        weights = (1 / volatilities) / (1 / volatilities).sum()
         return dict(zip(returns.columns, weights))
-
-class BlackLittermanOptimizer(OptimizationStrategy):
-    """Black-Litterman optimization with views."""
-    
-    def __init__(self, tau: float = 0.025, risk_aversion: float = 3.0):
-        self.tau = tau
-        self.risk_aversion = risk_aversion
-    
-    def optimize(self, returns: pd.DataFrame, constraints: Dict) -> Dict[str, float]:
-        """Optimize using Black-Litterman model."""
-        # Market cap weights (simplified - equal weights as prior)
-        n_assets = len(returns.columns)
-        w_market = np.ones(n_assets) / n_assets
-        
-        # Calculate expected returns and covariance
-        mu = returns.mean() * 252
-        sigma = returns.cov() * 252
-        
-        # Implied equilibrium returns
-        pi = self.risk_aversion * sigma @ w_market
-        
-        # Black-Litterman formula (without views for simplicity)
-        tau_sigma = self.tau * sigma
-        bl_mu = np.linalg.inv(tau_sigma + np.linalg.inv(sigma)) @ (tau_sigma @ mu + np.linalg.inv(sigma) @ pi)
-        bl_sigma = np.linalg.inv(np.linalg.inv(tau_sigma) + np.linalg.inv(sigma))
-        
-        # Optimize portfolio
-        inv_sigma = np.linalg.inv(bl_sigma)
-        ones = np.ones((n_assets, 1))
-        
-        # Calculate optimal weights
-        w_opt = (inv_sigma @ bl_mu) / (ones.T @ inv_sigma @ bl_mu)
-        w_opt = w_opt.flatten()
-        
-        # Apply constraints
-        min_weight = constraints.get('min_weight', 0.0)
-        max_weight = constraints.get('max_weight', 1.0)
-        
-        w_opt = np.clip(w_opt, min_weight, max_weight)
-        w_opt = w_opt / w_opt.sum()
-        
-        return dict(zip(returns.columns, w_opt))
 ```
 
-2. **Register the custom optimizer**:
-
+### Registration
 ```python
 # src/portfolio_rebalancer/optimizer/__init__.py
-from .sharpe_optimizer import SharpeOptimizer
-from .custom_optimizer import MomentumOptimizer, RiskParityOptimizer, BlackLittermanOptimizer
-
 def get_optimizer(strategy_type: str, **kwargs):
-    """Factory function for optimization strategies."""
-    if strategy_type == 'sharpe':
-        return SharpeOptimizer(**kwargs)
-    elif strategy_type == 'momentum':
+    if strategy_type == 'momentum':
         return MomentumOptimizer(**kwargs)
     elif strategy_type == 'risk_parity':
         return RiskParityOptimizer(**kwargs)
-    elif strategy_type == 'black_litterman':
-        return BlackLittermanOptimizer(**kwargs)
-    else:
-        raise ValueError(f"Unknown strategy type: {strategy_type}")
+    # ... other optimizers
 ```
 
 ## Custom Broker Interfaces
 
-### Creating a Custom Broker
-
-1. **Implement the BrokerInterface**:
-
+### Basic Implementation
 ```python
 # src/portfolio_rebalancer/executor/custom_broker.py
 from typing import Dict
 from ..common.interfaces import BrokerInterface
 
 class TDAmeritradeBroker(BrokerInterface):
-    """TD Ameritrade broker implementation."""
-    
     def __init__(self, client_id: str, refresh_token: str):
         self.client_id = client_id
         self.refresh_token = refresh_token
-        self.access_token = None
         self._authenticate()
     
-    def _authenticate(self):
-        """Authenticate with TD Ameritrade API."""
-        import requests
-        
-        url = "https://api.tdameritrade.com/v1/oauth2/token"
-        data = {
-            'grant_type': 'refresh_token',
-            'refresh_token': self.refresh_token,
-            'client_id': self.client_id
-        }
-        
-        response = requests.post(url, data=data)
-        response.raise_for_status()
-        
-        self.access_token = response.json()['access_token']
-    
     def get_positions(self) -> Dict[str, float]:
-        """Get current portfolio positions."""
-        import requests
-        
-        url = "https://api.tdameritrade.com/v1/accounts"
-        headers = {'Authorization': f'Bearer {self.access_token}'}
-        
-        response = requests.get(url, headers=headers)
-        response.raise_for_status()
-        
-        accounts = response.json()
-        positions = {}
-        
-        for account in accounts:
-            for position in account.get('positions', []):
-                symbol = position['instrument']['symbol']
-                quantity = float(position['longQuantity']) - float(position['shortQuantity'])
-                positions[symbol] = quantity
-        
-        return positions
+        # Fetch positions from TD Ameritrade API
+        pass
     
     def place_order(self, symbol: str, quantity: float, order_type: str) -> str:
-        """Place a trade order."""
-        import requests
-        import uuid
-        
-        account_id = self._get_account_id()
-        url = f"https://api.tdameritrade.com/v1/accounts/{account_id}/orders"
-        headers = {
-            'Authorization': f'Bearer {self.access_token}',
-            'Content-Type': 'application/json'
-        }
-        
-        order_data = {
-            'orderType': order_type.upper(),
-            'session': 'NORMAL',
-            'duration': 'DAY',
-            'orderStrategyType': 'SINGLE',
-            'orderLegCollection': [{
-                'instruction': 'BUY' if quantity > 0 else 'SELL',
-                'quantity': abs(quantity),
-                'instrument': {
-                    'symbol': symbol,
-                    'assetType': 'EQUITY'
-                }
-            }]
-        }
-        
-        response = requests.post(url, headers=headers, json=order_data)
-        response.raise_for_status()
-        
-        # Extract order ID from response headers
-        order_id = response.headers.get('Location', '').split('/')[-1]
-        return order_id or str(uuid.uuid4())
+        # Place order via TD Ameritrade API
+        pass
     
     def get_order_status(self, order_id: str) -> str:
-        """Get status of a placed order."""
-        import requests
-        
-        account_id = self._get_account_id()
-        url = f"https://api.tdameritrade.com/v1/accounts/{account_id}/orders/{order_id}"
-        headers = {'Authorization': f'Bearer {self.access_token}'}
-        
-        response = requests.get(url, headers=headers)
-        response.raise_for_status()
-        
-        order_data = response.json()
-        return order_data.get('status', 'UNKNOWN').lower()
-    
-    def _get_account_id(self) -> str:
-        """Get the primary account ID."""
-        import requests
-        
-        url = "https://api.tdameritrade.com/v1/accounts"
-        headers = {'Authorization': f'Bearer {self.access_token}'}
-        
-        response = requests.get(url, headers=headers)
-        response.raise_for_status()
-        
-        accounts = response.json()
-        return accounts[0]['securitiesAccount']['accountId']
+        # Check order status
+        pass
+```
+
+### Configuration
+```bash
+BROKER_TYPE=td_ameritrade
+TD_CLIENT_ID=your_client_id
+TD_REFRESH_TOKEN=your_refresh_token
 ```
 
 ## Custom Storage Backends
@@ -735,4 +448,509 @@ TARGET_RETIREMENT_AGE=65
 RISK_TOLERANCE=moderate
 ```
 
-This customization guide provides comprehensive examples for extending the Portfolio Rebalancer system with custom components while maintaining the existing architecture and interfaces.
+## 🔧 Advanced Customization Examples
+
+### Custom Notification Systems
+
+Create custom notification handlers for alerts and status updates:
+
+```python
+# src/portfolio_rebalancer/common/custom_notifications.py
+from abc import ABC, abstractmethod
+from typing import Dict, Any
+import requests
+import smtplib
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
+
+class NotificationHandler(ABC):
+    """Abstract base class for notification handlers."""
+    
+    @abstractmethod
+    def send_notification(self, message: str, level: str = "info", **kwargs) -> bool:
+        """Send notification with specified message and level."""
+        pass
+
+class SlackNotificationHandler(NotificationHandler):
+    """Slack webhook notification handler."""
+    
+    def __init__(self, webhook_url: str, channel: str = None):
+        self.webhook_url = webhook_url
+        self.channel = channel
+    
+    def send_notification(self, message: str, level: str = "info", **kwargs) -> bool:
+        """Send notification to Slack channel."""
+        color_map = {
+            "info": "#36a64f",      # Green
+            "warning": "#ff9500",   # Orange
+            "error": "#ff0000",     # Red
+            "success": "#00ff00"    # Bright Green
+        }
+        
+        payload = {
+            "text": f"Portfolio Rebalancer: {message}",
+            "attachments": [{
+                "color": color_map.get(level, "#36a64f"),
+                "fields": [
+                    {"title": "Level", "value": level.upper(), "short": True},
+                    {"title": "Timestamp", "value": kwargs.get("timestamp", ""), "short": True}
+                ]
+            }]
+        }
+        
+        if self.channel:
+            payload["channel"] = self.channel
+        
+        try:
+            response = requests.post(self.webhook_url, json=payload, timeout=10)
+            return response.status_code == 200
+        except Exception:
+            return False
+
+class EmailNotificationHandler(NotificationHandler):
+    """Email notification handler."""
+    
+    def __init__(self, smtp_server: str, smtp_port: int, username: str, 
+                 password: str, from_email: str, to_emails: list):
+        self.smtp_server = smtp_server
+        self.smtp_port = smtp_port
+        self.username = username
+        self.password = password
+        self.from_email = from_email
+        self.to_emails = to_emails
+    
+    def send_notification(self, message: str, level: str = "info", **kwargs) -> bool:
+        """Send email notification."""
+        try:
+            msg = MIMEMultipart()
+            msg['From'] = self.from_email
+            msg['To'] = ", ".join(self.to_emails)
+            msg['Subject'] = f"Portfolio Rebalancer Alert - {level.upper()}"
+            
+            body = f"""
+            Portfolio Rebalancer Notification
+            
+            Level: {level.upper()}
+            Message: {message}
+            Timestamp: {kwargs.get('timestamp', '')}
+            
+            Additional Details:
+            {kwargs.get('details', 'None')}
+            """
+            
+            msg.attach(MIMEText(body, 'plain'))
+            
+            with smtplib.SMTP(self.smtp_server, self.smtp_port) as server:
+                server.starttls()
+                server.login(self.username, self.password)
+                server.send_message(msg)
+            
+            return True
+        except Exception:
+            return False
+
+class DiscordNotificationHandler(NotificationHandler):
+    """Discord webhook notification handler."""
+    
+    def __init__(self, webhook_url: str):
+        self.webhook_url = webhook_url
+    
+    def send_notification(self, message: str, level: str = "info", **kwargs) -> bool:
+        """Send notification to Discord channel."""
+        color_map = {
+            "info": 0x3498db,      # Blue
+            "warning": 0xf39c12,   # Orange
+            "error": 0xe74c3c,     # Red
+            "success": 0x2ecc71    # Green
+        }
+        
+        payload = {
+            "embeds": [{
+                "title": "Portfolio Rebalancer Notification",
+                "description": message,
+                "color": color_map.get(level, 0x3498db),
+                "fields": [
+                    {"name": "Level", "value": level.upper(), "inline": True},
+                    {"name": "Timestamp", "value": kwargs.get("timestamp", ""), "inline": True}
+                ]
+            }]
+        }
+        
+        try:
+            response = requests.post(self.webhook_url, json=payload, timeout=10)
+            return response.status_code == 204
+        except Exception:
+            return False
+```
+
+### Custom Metrics and Monitoring
+
+Extend the monitoring system with custom metrics:
+
+```python
+# src/portfolio_rebalancer/common/custom_metrics.py
+from prometheus_client import Counter, Histogram, Gauge, Info
+from typing import Dict, Any
+import time
+from functools import wraps
+
+# Custom metrics
+portfolio_performance_gauge = Gauge(
+    'portfolio_performance_total_return', 
+    'Total portfolio return percentage',
+    ['strategy', 'time_period']
+)
+
+trade_execution_counter = Counter(
+    'trades_executed_total',
+    'Total number of trades executed',
+    ['symbol', 'action', 'broker']
+)
+
+optimization_duration_histogram = Histogram(
+    'optimization_duration_seconds',
+    'Time spent on portfolio optimization',
+    ['strategy', 'num_assets']
+)
+
+data_quality_gauge = Gauge(
+    'data_quality_score',
+    'Data quality score (0-1)',
+    ['provider', 'symbol']
+)
+
+rebalance_threshold_gauge = Gauge(
+    'portfolio_drift_percentage',
+    'Current portfolio drift from target allocation',
+    ['symbol']
+)
+
+class CustomMetricsCollector:
+    """Custom metrics collection and reporting."""
+    
+    def __init__(self):
+        self.start_times = {}
+    
+    def record_portfolio_performance(self, strategy: str, time_period: str, return_pct: float):
+        """Record portfolio performance metrics."""
+        portfolio_performance_gauge.labels(
+            strategy=strategy, 
+            time_period=time_period
+        ).set(return_pct)
+    
+    def record_trade_execution(self, symbol: str, action: str, broker: str):
+        """Record trade execution metrics."""
+        trade_execution_counter.labels(
+            symbol=symbol,
+            action=action,
+            broker=broker
+        ).inc()
+    
+    def record_data_quality(self, provider: str, symbol: str, quality_score: float):
+        """Record data quality metrics."""
+        data_quality_gauge.labels(
+            provider=provider,
+            symbol=symbol
+        ).set(quality_score)
+    
+    def record_portfolio_drift(self, symbol: str, drift_pct: float):
+        """Record portfolio drift metrics."""
+        rebalance_threshold_gauge.labels(symbol=symbol).set(drift_pct)
+    
+    def time_optimization(self, strategy: str, num_assets: int):
+        """Context manager for timing optimization operations."""
+        return OptimizationTimer(strategy, num_assets)
+
+class OptimizationTimer:
+    """Context manager for timing optimization operations."""
+    
+    def __init__(self, strategy: str, num_assets: int):
+        self.strategy = strategy
+        self.num_assets = num_assets
+        self.start_time = None
+    
+    def __enter__(self):
+        self.start_time = time.time()
+        return self
+    
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        duration = time.time() - self.start_time
+        optimization_duration_histogram.labels(
+            strategy=self.strategy,
+            num_assets=str(self.num_assets)
+        ).observe(duration)
+
+# Decorator for automatic metrics collection
+def collect_metrics(metric_type: str):
+    """Decorator to automatically collect metrics for functions."""
+    def decorator(func):
+        @wraps(func)
+        def wrapper(*args, **kwargs):
+            start_time = time.time()
+            try:
+                result = func(*args, **kwargs)
+                # Record success metrics
+                if metric_type == 'optimization':
+                    duration = time.time() - start_time
+                    optimization_duration_histogram.labels(
+                        strategy=kwargs.get('strategy', 'unknown'),
+                        num_assets=str(kwargs.get('num_assets', 0))
+                    ).observe(duration)
+                return result
+            except Exception as e:
+                # Record error metrics
+                error_counter = Counter(
+                    f'{metric_type}_errors_total',
+                    f'Total {metric_type} errors',
+                    ['error_type']
+                )
+                error_counter.labels(error_type=type(e).__name__).inc()
+                raise
+        return wrapper
+    return decorator
+```
+
+### Custom Risk Management
+
+Implement advanced risk management features:
+
+```python
+# src/portfolio_rebalancer/risk/custom_risk_management.py
+from typing import Dict, List, Tuple
+import pandas as pd
+import numpy as np
+from datetime import date, timedelta
+
+class RiskManager:
+    """Advanced risk management system."""
+    
+    def __init__(self, max_portfolio_var: float = 0.05, max_individual_weight: float = 0.4):
+        self.max_portfolio_var = max_portfolio_var
+        self.max_individual_weight = max_individual_weight
+    
+    def assess_portfolio_risk(self, returns: pd.DataFrame, weights: Dict[str, float]) -> Dict[str, float]:
+        """Assess overall portfolio risk metrics."""
+        # Convert weights to numpy array
+        weight_array = np.array([weights.get(col, 0) for col in returns.columns])
+        
+        # Calculate portfolio returns
+        portfolio_returns = (returns * weight_array).sum(axis=1)
+        
+        # Risk metrics
+        portfolio_vol = portfolio_returns.std() * np.sqrt(252)  # Annualized volatility
+        portfolio_var = np.percentile(portfolio_returns, 5)  # 5% VaR
+        max_drawdown = self._calculate_max_drawdown(portfolio_returns)
+        sharpe_ratio = portfolio_returns.mean() / portfolio_returns.std() * np.sqrt(252)
+        
+        return {
+            'portfolio_volatility': portfolio_vol,
+            'value_at_risk_5pct': portfolio_var,
+            'max_drawdown': max_drawdown,
+            'sharpe_ratio': sharpe_ratio,
+            'concentration_risk': max(weights.values()) if weights else 0
+        }
+    
+    def check_risk_limits(self, risk_metrics: Dict[str, float]) -> List[str]:
+        """Check if portfolio violates risk limits."""
+        violations = []
+        
+        if risk_metrics['value_at_risk_5pct'] < -self.max_portfolio_var:
+            violations.append(f"Portfolio VaR ({risk_metrics['value_at_risk_5pct']:.3f}) exceeds limit ({-self.max_portfolio_var:.3f})")
+        
+        if risk_metrics['concentration_risk'] > self.max_individual_weight:
+            violations.append(f"Concentration risk ({risk_metrics['concentration_risk']:.3f}) exceeds limit ({self.max_individual_weight:.3f})")
+        
+        if risk_metrics['max_drawdown'] < -0.2:  # 20% max drawdown
+            violations.append(f"Max drawdown ({risk_metrics['max_drawdown']:.3f}) exceeds 20% limit")
+        
+        return violations
+    
+    def _calculate_max_drawdown(self, returns: pd.Series) -> float:
+        """Calculate maximum drawdown from returns series."""
+        cumulative = (1 + returns).cumprod()
+        running_max = cumulative.expanding().max()
+        drawdown = (cumulative - running_max) / running_max
+        return drawdown.min()
+    
+    def suggest_risk_adjustments(self, weights: Dict[str, float], violations: List[str]) -> Dict[str, float]:
+        """Suggest weight adjustments to address risk violations."""
+        adjusted_weights = weights.copy()
+        
+        # If concentration risk is too high, cap individual weights
+        max_weight = max(weights.values()) if weights else 0
+        if max_weight > self.max_individual_weight:
+            # Find the asset with highest weight
+            max_asset = max(weights, key=weights.get)
+            excess_weight = max_weight - self.max_individual_weight
+            
+            # Reduce the overweight asset
+            adjusted_weights[max_asset] = self.max_individual_weight
+            
+            # Distribute excess weight to other assets
+            other_assets = [k for k in weights.keys() if k != max_asset]
+            if other_assets:
+                weight_per_asset = excess_weight / len(other_assets)
+                for asset in other_assets:
+                    adjusted_weights[asset] += weight_per_asset
+        
+        # Normalize weights to sum to 1
+        total_weight = sum(adjusted_weights.values())
+        if total_weight > 0:
+            adjusted_weights = {k: v / total_weight for k, v in adjusted_weights.items()}
+        
+        return adjusted_weights
+
+class VolatilityTargeting:
+    """Volatility targeting risk management."""
+    
+    def __init__(self, target_volatility: float = 0.12):
+        self.target_volatility = target_volatility
+    
+    def adjust_weights_for_volatility(self, returns: pd.DataFrame, weights: Dict[str, float]) -> Dict[str, float]:
+        """Adjust portfolio weights to target specific volatility."""
+        # Calculate current portfolio volatility
+        weight_array = np.array([weights.get(col, 0) for col in returns.columns])
+        portfolio_returns = (returns * weight_array).sum(axis=1)
+        current_vol = portfolio_returns.std() * np.sqrt(252)
+        
+        # Calculate scaling factor
+        if current_vol > 0:
+            scale_factor = self.target_volatility / current_vol
+            # Cap scaling to reasonable bounds
+            scale_factor = min(max(scale_factor, 0.5), 2.0)
+        else:
+            scale_factor = 1.0
+        
+        # Apply scaling (this is simplified - in practice you'd adjust individual weights)
+        adjusted_weights = {k: v * scale_factor for k, v in weights.items()}
+        
+        # Normalize
+        total_weight = sum(adjusted_weights.values())
+        if total_weight > 0:
+            adjusted_weights = {k: v / total_weight for k, v in adjusted_weights.items()}
+        
+        return adjusted_weights
+```
+
+### Custom Configuration Validation
+
+Create advanced configuration validation:
+
+```python
+# src/portfolio_rebalancer/common/custom_validation.py
+from typing import List, Dict, Any, Optional
+from pydantic import BaseModel, validator, Field
+import re
+from datetime import datetime
+
+class AdvancedPortfolioConfig(BaseModel):
+    """Advanced portfolio configuration with custom validation."""
+    
+    tickers: List[str] = Field(..., min_items=1, max_items=50)
+    target_allocations: Optional[Dict[str, float]] = None
+    rebalance_schedule: str = Field("daily", regex=r"^(daily|weekly|monthly|quarterly)$")
+    risk_budget: float = Field(0.15, ge=0.05, le=0.30)
+    max_turnover: float = Field(0.50, ge=0.10, le=1.00)
+    
+    @validator('tickers')
+    def validate_tickers(cls, v):
+        """Validate ticker symbols."""
+        ticker_pattern = re.compile(r'^[A-Z]{1,5}$')
+        invalid_tickers = [ticker for ticker in v if not ticker_pattern.match(ticker)]
+        if invalid_tickers:
+            raise ValueError(f"Invalid ticker symbols: {invalid_tickers}")
+        return v
+    
+    @validator('target_allocations')
+    def validate_allocations(cls, v, values):
+        """Validate target allocations sum to 1 and match tickers."""
+        if v is None:
+            return v
+        
+        # Check if allocations sum to approximately 1
+        total_allocation = sum(v.values())
+        if not (0.99 <= total_allocation <= 1.01):
+            raise ValueError(f"Target allocations sum to {total_allocation}, must sum to 1.0")
+        
+        # Check if all tickers have allocations
+        tickers = values.get('tickers', [])
+        missing_tickers = set(tickers) - set(v.keys())
+        if missing_tickers:
+            raise ValueError(f"Missing allocations for tickers: {missing_tickers}")
+        
+        extra_tickers = set(v.keys()) - set(tickers)
+        if extra_tickers:
+            raise ValueError(f"Allocations for unknown tickers: {extra_tickers}")
+        
+        return v
+    
+    @validator('risk_budget')
+    def validate_risk_budget(cls, v):
+        """Validate risk budget is reasonable."""
+        if v > 0.25:
+            raise ValueError("Risk budget above 25% is considered too aggressive")
+        return v
+
+class TradingHoursValidator:
+    """Validate trading hours and market schedules."""
+    
+    @staticmethod
+    def validate_execution_time(execution_time: str, timezone: str) -> bool:
+        """Validate execution time is during market hours."""
+        # This is a simplified example - in practice you'd check actual market hours
+        try:
+            hour, minute = map(int, execution_time.split(':'))
+            # US market hours: 9:30 AM - 4:00 PM ET
+            if timezone == "America/New_York":
+                market_open = 9 * 60 + 30  # 9:30 AM in minutes
+                market_close = 16 * 60     # 4:00 PM in minutes
+                execution_minutes = hour * 60 + minute
+                
+                # Allow execution after market close for end-of-day rebalancing
+                return execution_minutes >= market_close
+            return True
+        except ValueError:
+            return False
+
+class BrokerConfigValidator:
+    """Validate broker-specific configurations."""
+    
+    @staticmethod
+    def validate_alpaca_config(api_key: str, secret_key: str, base_url: str) -> List[str]:
+        """Validate Alpaca configuration."""
+        errors = []
+        
+        if not api_key or len(api_key) < 20:
+            errors.append("Alpaca API key appears to be invalid")
+        
+        if not secret_key or len(secret_key) < 40:
+            errors.append("Alpaca secret key appears to be invalid")
+        
+        valid_urls = [
+            "https://api.alpaca.markets",
+            "https://paper-api.alpaca.markets"
+        ]
+        if base_url not in valid_urls:
+            errors.append(f"Invalid Alpaca base URL. Must be one of: {valid_urls}")
+        
+        return errors
+    
+    @staticmethod
+    def validate_ib_config(host: str, port: int, client_id: int) -> List[str]:
+        """Validate Interactive Brokers configuration."""
+        errors = []
+        
+        if not re.match(r'^(\d{1,3}\.){3}\d{1,3}$', host) and host != 'localhost':
+            errors.append("Invalid IB host format")
+        
+        valid_ports = [7496, 7497, 4001, 4002]  # Common IB ports
+        if port not in valid_ports:
+            errors.append(f"Unusual IB port {port}. Common ports are: {valid_ports}")
+        
+        if not (0 <= client_id <= 32):
+            errors.append("IB client ID should be between 0 and 32")
+        
+        return errors
+```
+
+This comprehensive customization guide provides developers with extensive examples and patterns for extending the Portfolio Rebalancer system while maintaining code quality, security, and performance standards.

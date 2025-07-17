@@ -1,481 +1,237 @@
 # Portfolio Rebalancer
 
-A Python-based automated portfolio rebalancing system that fetches market data, optimizes allocations using Modern Portfolio Theory with age-based glide paths, and executes trades through broker APIs. Built with a modular microservices architecture supporting Docker and Kubernetes deployments.
+An automated portfolio rebalancing system that fetches market data, optimizes allocations using Modern Portfolio Theory, and executes trades through broker APIs. Built with Python containerised with Docker and can be deployed using kubernettes.
+
+## System Architecture
+
+The Portfolio Rebalancer follows a microservices architecture with four core services orchestrated by a central scheduler. The **Scheduler Service** coordinates the daily execution pipeline by triggering the **Data Fetcher** to retrieve market data from Yahoo Finance, the **Portfolio Optimizer** to calculate optimal allocations using Modern Portfolio Theory, and the **Trade Executor** to rebalance positions through broker APIs. Each service operates independently with its own REST API, enabling both automated pipeline execution and manual intervention when needed.
+
+The system integrates with external APIs including Yahoo Finance for market data and broker APIs for trade execution, while supporting multiple storage backends for data persistence. Monitoring is built-in through Prometheus metrics collection, Grafana dashboards, and JSON logging, making the system production ready with observability. The modular design allows for easy customization of data providers, optimization strategies, and broker integrations while maintaining separation of concerns across the pipeline stages.
+
+```mermaid
+flowchart TD
+    %% External Data Sources
+    YF[Yahoo Finance<br/>Market Data API]
+
+    %% Broker APIs
+    ALPACA[Alpaca Markets<br/>Trading API]
+    IB[Interactive Brokers<br/>Trading API]
+
+    %% Core Pipeline Services
+    SCHEDULER[Scheduler Service<br/>Orchestrates Pipeline<br/>Port 8083]
+    FETCHER[Data Fetcher<br/>Market Data Collection<br/>Port 8080]
+    OPTIMIZER[Portfolio Optimizer<br/>Modern Portfolio Theory<br/>Port 8081]
+    EXECUTOR[Trade Executor<br/>Order Management<br/>Port 8082]
+
+    %% Storage Layer
+    STORAGE[(Data Storage<br/>Parquet/SQLite/Redis)]
+
+    %% Monitoring Stack
+    METRICS[Prometheus<br/>Metrics Collection]
+    DASHBOARD[Grafana<br/>Monitoring Dashboard]
+    LOGS[Structured Logs<br/>JSON Format]
+
+    %% Main Pipeline Flow
+    SCHEDULER -->|1. Trigger| FETCHER
+    SCHEDULER -->|2. Trigger| OPTIMIZER
+    SCHEDULER -->|3. Trigger| EXECUTOR
+
+    %% Data Flow
+    YF -->|Market Data| FETCHER
+    FETCHER -->|Store Prices| STORAGE
+    STORAGE -->|Historical Data| OPTIMIZER
+    OPTIMIZER -->|Target Allocation| EXECUTOR
+
+    %% Trading Flow
+    EXECUTOR -->|Get Positions| ALPACA
+    EXECUTOR -->|Get Positions| IB
+    EXECUTOR -->|Place Orders| ALPACA
+    EXECUTOR -->|Place Orders| IB
+
+    %% Monitoring Flow
+    FETCHER -.->|Metrics| METRICS
+    OPTIMIZER -.->|Metrics| METRICS
+    EXECUTOR -.->|Metrics| METRICS
+    SCHEDULER -.->|Metrics| METRICS
+
+    METRICS -->|Visualize| DASHBOARD
+
+    FETCHER -.->|Logs| LOGS
+    OPTIMIZER -.->|Logs| LOGS
+    EXECUTOR -.->|Logs| LOGS
+    SCHEDULER -.->|Logs| LOGS
+
+    %% Styling
+    classDef service fill:#e1f5fe,stroke:#01579b,stroke-width:2px
+    classDef external fill:#f3e5f5,stroke:#4a148c,stroke-width:2px
+    classDef storage fill:#e8f5e8,stroke:#1b5e20,stroke-width:2px
+    classDef monitoring fill:#fff3e0,stroke:#e65100,stroke-width:2px
+
+    class SCHEDULER,FETCHER,OPTIMIZER,EXECUTOR service
+    class YF,ALPACA,IB external
+    class STORAGE storage
+    class METRICS,DASHBOARD,LOGS monitoring
+```
 
 ## Features
 
-- **Automated Data Fetching**: Daily market data retrieval via yfinance API with error handling and backfill capabilities
-- **Portfolio Optimization**: Modern Portfolio Theory implementation with Sharpe ratio maximization and age-based glide paths
-- **Multi-Broker Support**: Alpaca and Interactive Brokers API integration with paper trading support
-- **Flexible Storage**: Parquet file or SQLite database storage options
-- **Containerized Deployment**: Docker Compose and Kubernetes support with scheduling
-- **Comprehensive Monitoring**: Structured logging, metrics, and health checks
-- **Extensible Architecture**: Plugin-based design for custom data providers, optimization strategies, and brokers
-
-## Architecture
-
-The system consists of three core microservices:
-
-1. **Data Fetcher**: Retrieves and stores market data
-2. **Portfolio Optimizer**: Calculates optimal allocations using MPT
-3. **Trade Executor**: Compares current vs target allocations and executes trades
+- **Automated Data Fetching**: Daily market data retrieval with error handling and rate limiting
+- **Portfolio Optimization**: Modern Portfolio Theory with Sharpe ratio maximization and age-based glide paths
+- **Multi-Broker Support**: Alpaca and Interactive Brokers integration with paper trading
+- **Flexible Storage**: Parquet files, SQLite, or Redis backends
+- **Production Ready**: Docker Compose and Kubernetes deployment with monitoring
+- **Extensible Design**: Plugin architecture for custom providers and strategies
 
 ## Quick Start
 
 ### Prerequisites
 
 - Python 3.9+
-- Docker and Docker Compose (for containerized deployment)
-- Broker account (Alpaca or Interactive Brokers) for live trading
+- Docker and Docker Compose
+- Broker account (which is supported in the framework or feel free to integrate new brokers and contribute!)
 
-### Local Installation
+### Docker Deployment
 
-1. **Clone the repository**:
 ```bash
-git clone <repository-url>
-cd portfolio-rebalancer
+# Copy and configure environment
+cp /examples/config-production.env .env
+# Edit .env with your own settings
+
+# Start automated scheduler
+docker-compose up -d scheduler
+
+# Or run services manually
+docker-compose --profile manual up -d data-fetcher optimizer executor
+
+# Check service health
+curl http://localhost:8083/health
 ```
 
-2. **Create virtual environment**:
-```bash
-python -m venv env
-source env/bin/activate  # On Windows: env\Scripts\activate
-```
+### Kubernetes Deployment
 
-3. **Install dependencies**:
 ```bash
-pip install -r requirements.txt
-```
+# Copy and configure environment
+cp /examples/config-kubernetes.yaml .env
+# Edit yaml file with your own settings
 
-4. **Configure environment**:
-```bash
-cp .env.example .env
-# Edit .env with your configuration
-```
+# Quick deployment
+./scripts/deploy-k8s.sh
 
-5. **Run tests**:
-```bash
-pytest tests/
+# Manual deployment
+kubectl create namespace portfolio-rebalancer
+kubectl apply -f k8s/
+
+# Update credentials
+kubectl edit secret broker-credentials -n portfolio-rebalancer
 ```
 
 ## Configuration
 
-### Environment Variables
+### Essential Environment Variables
 
-The system is configured through environment variables or a `.env` file. Key configuration sections:
-
-#### Data Configuration
 ```bash
-TICKERS=SPY,QQQ,VTI,VXUS,BND  # Comma-separated ticker list
-STORAGE_TYPE=parquet           # "parquet" or "sqlite"
-STORAGE_PATH=data             # Data storage directory
-BACKFILL_DAYS=252             # Historical data backfill period
-```
+# Data Configuration
+TICKERS=SPY,QQQ,VTI,VXUS,BND
+STORAGE_TYPE=parquet
+BACKFILL_DAYS=252
 
-#### Optimization Configuration
-```bash
-USER_AGE=35                   # Age for glide path calculation
-RISK_FREE_RATE=0.02          # Risk-free rate assumption
-LOOKBACK_DAYS=252            # Historical data lookback period
-MIN_WEIGHT=0.0               # Minimum asset weight
-MAX_WEIGHT=0.4               # Maximum asset weight
-SAFE_PORTFOLIO_BONDS=0.8     # Bond allocation in safe portfolio
-```
+# Optimization
+USER_AGE=35
+RISK_FREE_RATE=0.02
+OPTIMIZATION_METHOD=sharpe
 
-#### Broker Configuration
-```bash
-# Alpaca (recommended for beginners)
+# Broker (Alpaca Paper Trading)
 BROKER_TYPE=alpaca
 ALPACA_API_KEY=your_key_here
 ALPACA_SECRET_KEY=your_secret_here
-ALPACA_BASE_URL=https://paper-api.alpaca.markets  # Paper trading
+ALPACA_BASE_URL=https://paper-api.alpaca.markets
 
-# Interactive Brokers
-BROKER_TYPE=ib
-IB_HOST=127.0.0.1
-IB_PORT=7497
-IB_CLIENT_ID=1
+# Execution
+REBALANCE_THRESHOLD=0.05
+DRY_RUN=true  # Set to false for live trading
+ORDER_TYPE=market
+
+# Scheduling
+EXECUTION_TIME=16:30
+TIMEZONE=America/New_York
 ```
 
-#### Execution Configuration
-```bash
-REBALANCE_THRESHOLD=0.05     # 5% drift threshold for rebalancing
-ORDER_TYPE=market            # "market" or "limit"
-EXECUTION_TIME=16:30         # Daily execution time (after market close)
-TIMEZONE=America/New_York    # Timezone for scheduling
-```
-
-### Configuration File
-
-For complex configurations, create a `config.json` file:
-
-```json
-{
-  "data": {
-    "tickers": ["SPY", "QQQ", "VTI", "VXUS", "BND"],
-    "storage_type": "parquet",
-    "backfill_days": 252
-  },
-  "optimization": {
-    "user_age": 35,
-    "risk_free_rate": 0.02,
-    "min_weight": 0.05,
-    "max_weight": 0.35
-  },
-  "executor": {
-    "rebalance_threshold": 0.05,
-    "order_type": "market"
-  }
-}
-```
+See `examples/config-development.env` and `examples/config-production.env` for complete configuration examples.
 
 ## Usage
 
 ### Manual Execution
 
-Run individual components:
-
 ```bash
 # Fetch market data
-python -m src.portfolio_rebalancer.fetcher
+python -m src.portfolio_rebalancer.services.fetcher_service
 
-# Optimize portfolio
-python -m src.portfolio_rebalancer.optimizer
+# Calculate optimal allocations
+python -m src.portfolio_rebalancer.services.optimizer_service
 
 # Execute trades (dry run)
-python -m src.portfolio_rebalancer.executor --dry-run
+python -m src.portfolio_rebalancer.services.executor_service --dry-run
+
+# Run complete pipeline
+python -m src.portfolio_rebalancer.services.scheduler_service --run-once
 ```
 
-### Scheduled Execution
-
-The system includes a scheduler for automated daily execution:
+### REST API
 
 ```bash
-python -m src.portfolio_rebalancer.scheduler
+# Trigger data fetching
+curl -X POST http://localhost:8080/fetch
+
+# Get optimization results
+curl http://localhost:8081/optimize
+
+# Execute trades
+curl -X POST http://localhost:8082/execute
+
+# Check pipeline status
+curl http://localhost:8083/status
 ```
 
-## Deployment
-
-### Docker Compose
-
-1. **Create docker-compose.yml**:
-```yaml
-version: '3.8'
-
-services:
-  scheduler:
-    build: .
-    command: python -m src.portfolio_rebalancer.scheduler
-    environment:
-      - TICKERS=${TICKERS}
-      - ALPACA_API_KEY=${ALPACA_API_KEY}
-      - ALPACA_SECRET_KEY=${ALPACA_SECRET_KEY}
-    volumes:
-      - ./data:/app/data
-      - ./logs:/app/logs
-    restart: unless-stopped
-
-  data-fetcher:
-    build: .
-    command: python -m src.portfolio_rebalancer.fetcher
-    environment:
-      - TICKERS=${TICKERS}
-      - STORAGE_PATH=/app/data
-    volumes:
-      - ./data:/app/data
-    profiles: ["manual"]
-
-  optimizer:
-    build: .
-    command: python -m src.portfolio_rebalancer.optimizer
-    environment:
-      - USER_AGE=${USER_AGE}
-      - RISK_FREE_RATE=${RISK_FREE_RATE}
-    volumes:
-      - ./data:/app/data
-    profiles: ["manual"]
-
-  executor:
-    build: .
-    command: python -m src.portfolio_rebalancer.executor
-    environment:
-      - BROKER_TYPE=${BROKER_TYPE}
-      - ALPACA_API_KEY=${ALPACA_API_KEY}
-      - ALPACA_SECRET_KEY=${ALPACA_SECRET_KEY}
-    volumes:
-      - ./data:/app/data
-    profiles: ["manual"]
-
-volumes:
-  data:
-  logs:
-```
-
-2. **Deploy**:
-```bash
-# Start scheduler (automatic mode)
-docker-compose up -d scheduler
-
-# Run individual services (manual mode)
-docker-compose --profile manual up data-fetcher
-```
-
-### Kubernetes
-
-1. **Create namespace**:
-```bash
-kubectl create namespace portfolio-rebalancer
-```
-
-2. **Deploy configuration**:
-```bash
-# Create ConfigMap
-kubectl create configmap portfolio-config \
-  --from-env-file=.env \
-  -n portfolio-rebalancer
-
-# Create Secret for API keys
-kubectl create secret generic broker-credentials \
-  --from-literal=alpaca-api-key=your_key \
-  --from-literal=alpaca-secret-key=your_secret \
-  -n portfolio-rebalancer
-```
-
-3. **Deploy CronJob**:
-```yaml
-apiVersion: batch/v1
-kind: CronJob
-metadata:
-  name: portfolio-rebalancer
-  namespace: portfolio-rebalancer
-spec:
-  schedule: "30 16 * * 1-5"  # 4:30 PM weekdays
-  jobTemplate:
-    spec:
-      template:
-        spec:
-          containers:
-          - name: rebalancer
-            image: portfolio-rebalancer:latest
-            command: ["python", "-m", "src.portfolio_rebalancer.scheduler"]
-            envFrom:
-            - configMapRef:
-                name: portfolio-config
-            - secretRef:
-                name: broker-credentials
-            volumeMounts:
-            - name: data-storage
-              mountPath: /app/data
-          volumes:
-          - name: data-storage
-            persistentVolumeClaim:
-              claimName: portfolio-data
-          restartPolicy: OnFailure
-```
-
-## Customization
-
-### Adding Custom Data Providers
-
-1. **Implement the DataProvider interface**:
-```python
-from src.portfolio_rebalancer.common.interfaces import DataProvider
-
-class CustomDataProvider(DataProvider):
-    def fetch_prices(self, tickers, start_date, end_date):
-        # Your custom implementation
-        return price_dataframe
-```
-
-2. **Register in configuration**:
-```python
-# In your custom module
-from src.portfolio_rebalancer.common.config import get_config
-
-config = get_config()
-# Use your custom provider
-```
-
-### Adding Custom Optimization Strategies
-
-1. **Implement OptimizationStrategy interface**:
-```python
-from src.portfolio_rebalancer.common.interfaces import OptimizationStrategy
-
-class CustomOptimizer(OptimizationStrategy):
-    def optimize(self, returns, constraints):
-        # Your custom optimization logic
-        return {"SPY": 0.6, "BND": 0.4}
-```
-
-2. **Configure strategy selection**:
-```python
-# Add strategy selection to config
-OPTIMIZATION_STRATEGY=custom
-```
-
-### Adding Custom Brokers
-
-1. **Implement BrokerInterface**:
-```python
-from src.portfolio_rebalancer.common.interfaces import BrokerInterface
-
-class CustomBroker(BrokerInterface):
-    def get_positions(self):
-        # Fetch current positions
-        return {"SPY": 100, "BND": 50}
-    
-    def place_order(self, symbol, quantity, order_type):
-        # Execute trade
-        return "order_id_123"
-    
-    def get_order_status(self, order_id):
-        # Check order status
-        return "filled"
-```
-
-2. **Register broker**:
-```bash
-BROKER_TYPE=custom
-```
-
-### Custom Glide Path Logic
-
-Modify the age-based allocation logic:
-
-```python
-class CustomGlidePath:
-    def get_allocation_blend(self, age):
-        # Custom age-based logic
-        if age < 30:
-            return (0.9, 0.1)  # 90% aggressive, 10% safe
-        elif age < 50:
-            return (0.7, 0.3)
-        else:
-            return (0.5, 0.5)
-```
-
-## Monitoring and Observability
-
-### Logging
-
-The system provides structured JSON logging:
-
-```bash
-# Set log level
-LOG_LEVEL=INFO
-
-# Enable file logging
-LOG_FILE_PATH=logs/portfolio_rebalancer.log
-
-# Use text format for development
-LOG_FORMAT=text
-```
-
-### Metrics
-
-Prometheus metrics are exposed for monitoring:
-
-- `portfolio_rebalancer_execution_time_seconds`
-- `portfolio_rebalancer_success_rate`
-- `portfolio_rebalancer_portfolio_drift`
-- `portfolio_rebalancer_trades_executed_total`
-
-### Health Checks
-
-Health check endpoints for container orchestration:
+### Monitoring
 
 ```bash
 # Check service health
 curl http://localhost:8080/health
 
-# Check readiness
-curl http://localhost:8080/ready
+# View Prometheus metrics
+curl http://localhost:8000/metrics
+
+# Monitor logs
+docker-compose logs -f scheduler
 ```
 
-## Security Considerations
+## Deployment Profiles
 
-### API Key Management
-
-- Use environment variables or Kubernetes secrets for API keys
-- Enable API key rotation where supported
-- Use paper trading URLs for development/testing
-
-### Data Security
-
-- Encrypt sensitive data at rest
-- Use secure communication (HTTPS) for all external APIs
-- Implement proper access controls in production
-
-### Container Security
-
-- Run containers as non-root user
-- Use minimal base images
-- Regularly update dependencies
-
-## Troubleshooting
-
-### Common Issues
-
-1. **API Rate Limits**:
-   - Reduce fetch frequency
-   - Implement exponential backoff
-   - Use multiple API keys if available
-
-2. **Optimization Failures**:
-   - Check data quality and completeness
-   - Adjust optimization constraints
-   - Enable fallback to equal-weight allocation
-
-3. **Trade Execution Errors**:
-   - Verify broker API credentials
-   - Check account permissions and buying power
-   - Use paper trading for testing
-
-4. **Data Storage Issues**:
-   - Ensure sufficient disk space
-   - Check file permissions
-   - Validate data integrity
-
-### Debug Mode
-
-Enable detailed logging for troubleshooting:
+### Development
 
 ```bash
-LOG_LEVEL=DEBUG
-VALIDATE_REQUIRED_CONFIG=true
+docker-compose up -d scheduler
+# Uses paper trading, debug logging, dry run mode
 ```
 
-### Testing
-
-Run comprehensive tests:
+### Production with Monitoring
 
 ```bash
-# Unit tests
-pytest tests/unit/
-
-# Integration tests
-pytest tests/integration/
-
-# End-to-end tests
-pytest tests/e2e/
+docker-compose --profile monitoring up -d
+# Includes Prometheus and Grafana
+# Access: http://localhost:3000 (default login: admin/admin)
 ```
 
-## Contributing
+### Manual Services
 
-1. Fork the repository
-2. Create a feature branch
-3. Add tests for new functionality
-4. Ensure all tests pass
-5. Submit a pull request
+```bash
+docker-compose --profile manual up -d data-fetcher optimizer executor
+# Run services individually
+```
 
-## License
+## Documentation
 
-[Add your license information here]
-
-## Support
-
-For issues and questions:
-- Check the troubleshooting section
-- Review logs for error details
-- Open an issue on GitHub
+- **API Documentation**: [docs/API.md](docs/API.md)
+- **Troubleshooting Guide**: [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md)
+- **Monitoring Setup**: [docs/MONITORING.md](docs/MONITORING.md)
+- **Configuration Examples**: [examples/](examples/)
