@@ -37,6 +37,7 @@ services:
       - ALPACA_SECRET_KEY=${ALPACA_SECRET_KEY}
       - ALPACA_BASE_URL=${ALPACA_BASE_URL:-https://paper-api.alpaca.markets}
       - IB_HOST=${IB_HOST:-127.0.0.1}
+      - T212_API_KEY=${T212_API_KEY}
       - USE_ENCRYPTED_CREDENTIALS=${USE_ENCRYPTED_CREDENTIALS:-true}
 
       # Security Configuration
@@ -180,6 +181,7 @@ services:
       - IB_HOST=${IB_HOST:-127.0.0.1}
       - IB_PORT=${IB_PORT:-7497}
       - IB_CLIENT_ID=${IB_CLIENT_ID:-1}
+      - T212_API_KEY=${T212_API_KEY}
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
       - LOG_FORMAT=${LOG_FORMAT:-json}
       - LOG_FILE_PATH=/app/logs/executor.log
