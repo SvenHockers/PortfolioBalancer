@@ -29,13 +29,13 @@ class FetcherService:
         self.data_provider = YFinanceProvider()
         
         # Initialize storage based on configuration
-        if self.config.storage.type == "parquet":
-            self.storage = ParquetStorage(self.config.storage.path)
+        if self.config.data.storage_type == "parquet":
+            self.storage = ParquetStorage(self.config.data.storage_path)
         else:
-            self.storage = SQLiteStorage(self.config.storage.path)
+            self.storage = SQLiteStorage(self.config.data.storage_path)
         
         self.data_fetcher = DataFetcher(
-            data_provider=self.data_provider,
+            provider=self.data_provider,
             storage=self.storage
         )
         
@@ -60,8 +60,8 @@ class FetcherService:
                     'status': 'healthy' if self.is_healthy else 'unhealthy',
                     'service': 'data-fetcher',
                     'last_execution': self.last_execution.isoformat() if self.last_execution else None,
-                    'storage_type': self.config.storage.type,
-                    'tickers_count': len(self.config.tickers)
+                    'storage_type': self.config.data.storage_type,
+                    'tickers_count': len(self.config.data.tickers)
                 }
                 
                 return jsonify(status), 200 if self.is_healthy else 503
@@ -114,18 +114,20 @@ class FetcherService:
             self.logger.info("Starting data fetch")
             
             # Fetch data for all configured tickers
-            results = self.data_fetcher.fetch_daily_data(
-                tickers=self.config.tickers,
-                backfill_days=self.config.fetcher.backfill_days
+            results = self.data_fetcher.backfill_missing_data(
+                tickers=self.config.data.tickers,
+                days=self.config.data.backfill_days
             )
             
-            self.last_execution = results.get('timestamp')
-            self.is_healthy = results.get('success', False)
-            
-            if self.is_healthy:
-                self.logger.info("Data fetch completed successfully")
+            # Check if we got data back
+            if results is not None and not results.empty:
+                from datetime import datetime
+                self.last_execution = datetime.now()
+                self.is_healthy = True
+                self.logger.info(f"Data fetch completed successfully - fetched {len(results)} records")
             else:
-                self.logger.error("Data fetch completed with errors")
+                self.is_healthy = False
+                self.logger.error("Data fetch completed but no data was returned")
             
             return self.is_healthy
             

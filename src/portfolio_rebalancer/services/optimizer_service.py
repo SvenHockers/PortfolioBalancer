@@ -25,13 +25,13 @@ class OptimizerService:
         self.logger = logging.getLogger(__name__)
         
         # Initialize storage based on configuration
-        if self.config.storage.type == "parquet":
-            self.storage = ParquetStorage(self.config.storage.path)
+        if self.config.data.storage_type == "parquet":
+            self.storage = ParquetStorage(self.config.data.storage_path)
         else:
-            self.storage = SQLiteStorage(self.config.storage.path)
+            self.storage = SQLiteStorage(self.config.data.storage_path)
         
         # Initialize optimizer
-        self.optimizer = PortfolioOptimizer(storage=self.storage)
+        self.optimizer = PortfolioOptimizer(data_storage=self.storage)
         
         # Flask app for health checks
         self.app = Flask(__name__)
@@ -54,8 +54,8 @@ class OptimizerService:
                     'status': 'healthy' if self.is_healthy else 'unhealthy',
                     'service': 'portfolio-optimizer',
                     'last_execution': self.last_execution.isoformat() if self.last_execution else None,
-                    'user_age': self.config.optimizer.user_age,
-                    'lookback_days': self.config.optimizer.lookback_days
+                    'user_age': self.config.optimization.user_age,
+                    'lookback_days': self.config.optimization.lookback_days
                 }
                 
                 if self.last_optimization_result:

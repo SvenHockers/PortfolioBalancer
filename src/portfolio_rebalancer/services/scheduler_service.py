@@ -2,6 +2,7 @@
 """Scheduler service entry point."""
 
 import logging
+import os
 import sys
 import signal
 import threading
@@ -120,11 +121,19 @@ class SchedulerService:
     def setup_schedule(self):
         """Setup the scheduled jobs."""
         try:
-            # Schedule daily execution
-            execution_time = self.config.scheduler.execution_time
-            self.scheduler.schedule_daily(execution_time)
+            # Check if interval scheduling is requested
+            interval_minutes = os.getenv('SCHEDULE_INTERVAL_MINUTES')
             
-            self.logger.info(f"Scheduled daily execution at {execution_time}")
+            if interval_minutes:
+                # Use interval scheduling for testing
+                interval_minutes = int(interval_minutes)
+                self.scheduler.schedule_interval(interval_minutes)
+                self.logger.info(f"Scheduled pipeline execution every {interval_minutes} minutes")
+            else:
+                # Use daily scheduling (default)
+                execution_time = self.config.scheduler.execution_time
+                self.scheduler.schedule_daily(execution_time)
+                self.logger.info(f"Scheduled daily execution at {execution_time}")
             
         except Exception as e:
             self.logger.error(f"Failed to setup schedule: {str(e)}")

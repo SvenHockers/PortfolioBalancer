@@ -84,105 +84,62 @@ class IBClient(EClient):
 class IBBroker(BaseBroker):
     """Interactive Brokers implementation for trade execution."""
     
-    def __init__(self):
+    def __init__(self, config: object = None):
         """Initialize the IB broker with API connection."""
-        super().__init__()
-        
+        super().__init__(config)
         if not IB_API_AVAILABLE:
-            raise ImportError("Interactive Brokers API is not available. Please install ibapi package.")
-        
-        # Get connection parameters from config
+            self.logger.error("Interactive Brokers API is not available. Please install ibapi package.")
+            return
         self.host = self.config.broker.ib_host
         self.port = self.config.broker.ib_port
         self.client_id = self.config.broker.ib_client_id
-        
-        # Initialize API wrapper and client
         self.wrapper = IBWrapper()
         self.client = IBClient(self.wrapper)
-        
-        # Connect to IB TWS or Gateway
         self._connect()
-        
-        # Order tracking
         self.orders = {}
         
     def _connect(self) -> None:
-        """Connect to Interactive Brokers TWS or Gateway."""
+        """Connect to Interactive Brokers TWS or Gateway. Returns None on error."""
         try:
             self.client.connect(self.host, self.port, self.client_id)
-            
-            # Start client thread
             api_thread = threading.Thread(target=self.client.run)
             api_thread.daemon = True
             api_thread.start()
-            
-            # Wait for nextValidId
             if not self.wrapper.next_order_id_ready.wait(10):
-                raise ConnectionError("Timed out waiting for IB API connection")
-                
+                self.logger.error("Timed out waiting for IB API connection")
+                return None
             self.logger.info(f"Successfully connected to IB API at {self.host}:{self.port}")
-            
-            # Request positions
             self.client.reqPositions()
-            time.sleep(1)  # Give time for positions to be received
-            
+            time.sleep(1)
         except Exception as e:
             self.logger.error(f"Failed to connect to IB API: {str(e)}")
-            raise ConnectionError(f"Failed to connect to IB API: {str(e)}")
+            return None
     
     def get_positions(self) -> Dict[str, float]:
-        """
-        Get current portfolio positions from IB.
-        
-        Returns:
-            Dictionary mapping ticker symbols to position quantities
-        """
+        """Get current portfolio positions from IB. Returns empty dict on error."""
         try:
-            # Request positions update
             self.client.reqPositions()
-            time.sleep(1)  # Give time for positions to be received
-            
+            time.sleep(1)
             return self.wrapper.positions.copy()
-            
         except Exception as e:
             self.logger.error(f"Failed to get positions from IB: {str(e)}")
-            raise
+            return {}
     
     def _place_order_impl(self, symbol: str, quantity: float, order_type: str, side: OrderSide) -> str:
-        """
-        Place an order with IB API.
-        
-        Args:
-            symbol: Ticker symbol
-            quantity: Absolute order quantity (always positive)
-            order_type: Order type ('market' or 'limit')
-            side: Order side ('buy' or 'sell')
-            
-        Returns:
-            Order ID string
-        """
+        """Place an order with IB API. Returns None on error."""
         try:
-            # Create contract
             contract = Contract()
             contract.symbol = symbol
             contract.secType = "STK"
             contract.exchange = "SMART"
             contract.currency = "USD"
-            
-            # Create order
             ib_order = IBOrder()
             ib_order.action = "BUY" if side == OrderSide.BUY else "SELL"
             ib_order.totalQuantity = quantity
             ib_order.orderType = "MKT" if order_type == OrderType.MARKET else "LMT"
-            
-            # Get next valid order ID
             order_id = self.wrapper.next_order_id
             self.wrapper.next_order_id += 1
-            
-            # Place order
             self.client.placeOrder(order_id, contract, ib_order)
-            
-            # Store order details
             self.orders[order_id] = {
                 "symbol": symbol,
                 "quantity": quantity,
@@ -190,32 +147,18 @@ class IBBroker(BaseBroker):
                 "side": side,
                 "timestamp": datetime.now()
             }
-            
             return str(order_id)
-            
         except Exception as e:
             self.logger.error(f"Failed to place order with IB: {str(e)}")
-            raise
+            return None
     
     def get_order_status(self, order_id: str) -> str:
-        """
-        Get status of a placed order from IB.
-        
-        Args:
-            order_id: Order ID to check
-            
-        Returns:
-            Order status string
-        """
+        """Get status of a placed order from IB. Returns OrderStatus.PENDING on error."""
         try:
             order_id_int = int(order_id)
-            
             if order_id_int not in self.wrapper.order_status:
                 return OrderStatus.PENDING
-                
             ib_status = self.wrapper.order_status[order_id_int]["status"]
-            
-            # Map IB status to our OrderStatus enum
             status_mapping = {
                 "Submitted": OrderStatus.PENDING,
                 "PreSubmitted": OrderStatus.PENDING,
@@ -225,42 +168,25 @@ class IBBroker(BaseBroker):
                 "Rejected": OrderStatus.REJECTED,
                 "Inactive": OrderStatus.CANCELLED
             }
-            
             return status_mapping.get(ib_status, OrderStatus.PENDING)
-            
         except Exception as e:
             self.logger.error(f"Failed to get order status from IB: {str(e)}")
-            raise
+            return OrderStatus.PENDING
     
     def get_order_details(self, order_id: str) -> TradeOrder:
-        """
-        Get detailed information about an order.
-        
-        Args:
-            order_id: Order ID to check
-            
-        Returns:
-            TradeOrder object with order details
-        """
+        """Get detailed information about an order. Returns None on error."""
         try:
             order_id_int = int(order_id)
-            
             if order_id_int not in self.orders:
-                raise ValueError(f"Order {order_id} not found")
-                
+                self.logger.error(f"Order {order_id} not found")
+                return None
             order_info = self.orders[order_id_int]
-            
-            # Get status
             status = self.get_order_status(order_id)
-            
-            # Get fill price if available
             fill_price = None
             if order_id_int in self.wrapper.order_status:
                 status_info = self.wrapper.order_status[order_id_int]
                 if status_info["filled"] > 0:
                     fill_price = status_info["avgFillPrice"]
-            
-            # Create TradeOrder object
             order = TradeOrder(
                 order_id=order_id,
                 symbol=order_info["symbol"],
@@ -271,29 +197,18 @@ class IBBroker(BaseBroker):
                 timestamp=order_info["timestamp"],
                 fill_price=fill_price
             )
-            
             return order
-            
         except Exception as e:
             self.logger.error(f"Failed to get order details from IB: {str(e)}")
-            raise
+            return None
     
     def cancel_order(self, order_id: str) -> bool:
-        """
-        Cancel an open order.
-        
-        Args:
-            order_id: Order ID to cancel
-            
-        Returns:
-            True if cancellation was successful, False otherwise
-        """
+        """Cancel an open order. Returns False on error."""
         try:
             order_id_int = int(order_id)
             self.client.cancelOrder(order_id_int)
             self.logger.info(f"Cancellation request sent for order {order_id}")
             return True
-            
         except Exception as e:
             self.logger.error(f"Failed to cancel order {order_id}: {str(e)}")
             return False

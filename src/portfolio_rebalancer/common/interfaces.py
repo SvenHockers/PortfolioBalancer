@@ -2,7 +2,7 @@
 
 from abc import ABC, abstractmethod
 from datetime import date
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional
 import pandas as pd
 
 
@@ -85,7 +85,7 @@ class BrokerInterface(ABC):
         pass
     
     @abstractmethod
-    def place_order(self, symbol: str, quantity: float, order_type: str) -> str:
+    def place_order(self, symbol: str, quantity: float, order_type: str) -> Optional[str]:
         """
         Place a trade order.
         
@@ -95,7 +95,7 @@ class BrokerInterface(ABC):
             order_type: Order type ('market' or 'limit')
             
         Returns:
-            Order ID string
+            Order ID string or None if failed
         """
         pass
     

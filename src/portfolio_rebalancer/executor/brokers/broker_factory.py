@@ -14,24 +14,21 @@ class BrokerFactory:
     """Factory for creating broker instances."""
     
     @staticmethod
-    def create_broker() -> BrokerInterface:
+    def create_broker() -> Optional[BrokerInterface]:
         """
-        Create a broker instance based on configuration.
-        
-        Returns:
-            BrokerInterface implementation
-        
-        Raises:
-            ValueError: If broker type is not supported
+        Create a broker instance based on configuration. Returns None on error.
         """
-        config = get_config()
-        broker_type = config.executor.broker_type.lower()
-        
-        logger.info(f"Creating broker instance for type: {broker_type}")
-        
-        if broker_type == "alpaca":
-            return AlpacaBroker()
-        elif broker_type == "ib":
-            return IBBroker()
-        else:
-            raise ValueError(f"Unsupported broker type: {broker_type}")
+        try:
+            config = get_config()
+            broker_type = config.executor.broker_type.lower()
+            logger.info(f"Creating broker instance for type: {broker_type}")
+            if broker_type == "alpaca":
+                return AlpacaBroker()
+            elif broker_type == "ib":
+                return IBBroker()
+            else:
+                logger.error(f"Unsupported broker type: {broker_type}")
+                return None
+        except Exception as e:
+            logger.error(f"Failed to create broker: {e}")
+            return None

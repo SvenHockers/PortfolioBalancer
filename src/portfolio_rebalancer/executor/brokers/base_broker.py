@@ -4,7 +4,7 @@ import logging
 from abc import ABC, abstractmethod
 from typing import Dict, Optional
 from portfolio_rebalancer.common.interfaces import BrokerInterface
-from portfolio_rebalancer.common.models import OrderType, OrderSide, OrderStatus, TradeOrder
+from portfolio_rebalancer.common.models import OrderType, OrderSide
 from portfolio_rebalancer.common.config import get_config
 
 logger = logging.getLogger(__name__)
@@ -13,22 +13,15 @@ logger = logging.getLogger(__name__)
 class BaseBroker(BrokerInterface, ABC):
     """Base class for broker implementations with common functionality."""
     
-    def __init__(self, config=None):
+    def __init__(self, config: Optional[object] = None):
         """Initialize the broker with configuration."""
         self.config = config or get_config()
         self.logger = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
         
-    def place_order(self, symbol: str, quantity: float, order_type: str) -> str:
+    def place_order(self, symbol: str, quantity: float, order_type: str) -> Optional[str]:
         """
         Place a trade order with error handling and logging.
-        
-        Args:
-            symbol: Ticker symbol
-            quantity: Order quantity (positive for buy, negative for sell)
-            order_type: Order type ('market' or 'limit')
-            
-        Returns:
-            Order ID string
+        Returns None on error instead of raising, to ensure container stability.
         """
         try:
             # Determine order side based on quantity
@@ -69,7 +62,8 @@ class BaseBroker(BrokerInterface, ABC):
                 },
                 exc_info=True
             )
-            raise
+            # Do not re-raise; return None to prevent container crash
+            return None
     
     @abstractmethod
     def _place_order_impl(self, symbol: str, quantity: float, order_type: str, side: OrderSide) -> str:

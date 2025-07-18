@@ -25,13 +25,13 @@ class ExecutorService:
         self.logger = logging.getLogger(__name__)
         
         # Initialize storage based on configuration
-        if self.config.storage.type == "parquet":
-            self.storage = ParquetStorage(self.config.storage.path)
+        if self.config.data.storage_type == "parquet":
+            self.storage = ParquetStorage(self.config.data.storage_path)
         else:
-            self.storage = SQLiteStorage(self.config.storage.path)
+            self.storage = SQLiteStorage(self.config.data.storage_path)
         
         # Initialize executor
-        self.executor = TradeExecutor(storage=self.storage)
+        self.executor = TradeExecutor()
         
         # Flask app for health checks
         self.app = Flask(__name__)

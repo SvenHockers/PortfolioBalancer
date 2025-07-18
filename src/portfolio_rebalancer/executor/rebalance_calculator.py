@@ -29,8 +29,8 @@ class RebalanceCalculator:
         
         # Get rebalancing thresholds from config
         self.absolute_threshold = self.config.executor.rebalance_absolute_threshold
-        self.relative_threshold = self.config.executor.rebalance_relative_threshold
-        self.min_trade_value = self.config.executor.min_trade_value
+        self.relative_threshold = self.config.executor.rebalance_threshold
+        self.min_trade_value = self.config.executor.rebalance_absolute_threshold  # Use absolute threshold as min trade value
         
         self.logger.info(
             f"Initialized RebalanceCalculator with thresholds: "

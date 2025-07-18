@@ -1,8 +1,6 @@
 """Alpaca broker implementation for trade execution."""
 
 import logging
-import time
-from typing import Dict, Optional, List, Any
 from datetime import datetime
 import requests
 from requests.exceptions import RequestException
@@ -15,7 +13,7 @@ logger = logging.getLogger(__name__)
 class AlpacaBroker(BaseBroker):
     """Alpaca broker implementation for trade execution."""
     
-    def __init__(self, config=None):
+    def __init__(self, config: object = None):
         """Initialize the Alpaca broker with API credentials."""
         super().__init__(config)
         
@@ -42,7 +40,7 @@ class AlpacaBroker(BaseBroker):
         self._validate_connection()
         
     def _validate_connection(self) -> None:
-        """Validate API connection by checking account status."""
+        """Validate API connection by checking account status. Returns None on error."""
         try:
             response = requests.get(
                 f"{self.base_url}/v2/account", 
@@ -54,14 +52,12 @@ class AlpacaBroker(BaseBroker):
             self.logger.info("Successfully connected to Alpaca API")
         except RequestException as e:
             self.logger.error(f"Failed to connect to Alpaca API: {str(e)}")
-            raise ConnectionError(f"Failed to connect to Alpaca API: {str(e)}")
+            # Do not raise; just log error
+            return None
     
-    def get_positions(self) -> Dict[str, float]:
+    def get_positions(self) -> dict[str, float]:
         """
-        Get current portfolio positions from Alpaca.
-        
-        Returns:
-            Dictionary mapping ticker symbols to position quantities
+        Get current portfolio positions from Alpaca. Returns empty dict on error.
         """
         try:
             response = requests.get(
@@ -71,35 +67,22 @@ class AlpacaBroker(BaseBroker):
                 timeout=self.config.broker.alpaca_timeout
             )
             response.raise_for_status()
-            
             positions = {}
             for position in response.json():
                 symbol = position["symbol"]
                 quantity = float(position["qty"])
                 positions[symbol] = quantity
-            
             self.logger.info(f"Retrieved {len(positions)} positions from Alpaca")
             return positions
-            
         except RequestException as e:
             self.logger.error(f"Failed to get positions from Alpaca: {str(e)}")
-            raise
+            return {}
     
     def _place_order_impl(self, symbol: str, quantity: float, order_type: str, side: OrderSide) -> str:
         """
-        Place an order with Alpaca API.
-        
-        Args:
-            symbol: Ticker symbol
-            quantity: Absolute order quantity (always positive)
-            order_type: Order type ('market' or 'limit')
-            side: Order side ('buy' or 'sell')
-            
-        Returns:
-            Order ID string
+        Place an order with Alpaca API. Returns None on error.
         """
         try:
-            # Prepare order payload
             payload = {
                 "symbol": symbol,
                 "qty": str(quantity),
@@ -107,8 +90,6 @@ class AlpacaBroker(BaseBroker):
                 "type": order_type,
                 "time_in_force": "day"
             }
-            
-            # Send order request
             response = requests.post(
                 f"{self.base_url}/v2/orders", 
                 json=payload, 
@@ -117,26 +98,16 @@ class AlpacaBroker(BaseBroker):
                 timeout=self.config.broker.alpaca_timeout
             )
             response.raise_for_status()
-            
-            # Extract order ID
             order_data = response.json()
             order_id = order_data["id"]
-            
             return order_id
-            
         except RequestException as e:
             self.logger.error(f"Failed to place order with Alpaca: {str(e)}")
-            raise
+            return None
     
     def get_order_status(self, order_id: str) -> str:
         """
-        Get status of a placed order from Alpaca.
-        
-        Args:
-            order_id: Order ID to check
-            
-        Returns:
-            Order status string
+        Get status of a placed order from Alpaca. Returns OrderStatus.PENDING on error.
         """
         try:
             response = requests.get(
@@ -146,11 +117,8 @@ class AlpacaBroker(BaseBroker):
                 timeout=self.config.broker.alpaca_timeout
             )
             response.raise_for_status()
-            
             order_data = response.json()
             alpaca_status = order_data["status"]
-            
-            # Map Alpaca status to our OrderStatus enum
             status_mapping = {
                 "new": OrderStatus.PENDING,
                 "filled": OrderStatus.FILLED,
@@ -159,22 +127,14 @@ class AlpacaBroker(BaseBroker):
                 "rejected": OrderStatus.REJECTED,
                 "expired": OrderStatus.CANCELLED
             }
-            
             return status_mapping.get(alpaca_status, OrderStatus.PENDING)
-            
         except RequestException as e:
             self.logger.error(f"Failed to get order status from Alpaca: {str(e)}")
-            raise
+            return OrderStatus.PENDING
     
     def get_order_details(self, order_id: str) -> TradeOrder:
         """
-        Get detailed information about an order.
-        
-        Args:
-            order_id: Order ID to check
-            
-        Returns:
-            TradeOrder object with order details
+        Get detailed information about an order. Returns None on error.
         """
         try:
             response = requests.get(
@@ -184,10 +144,7 @@ class AlpacaBroker(BaseBroker):
                 timeout=self.config.broker.alpaca_timeout
             )
             response.raise_for_status()
-            
             order_data = response.json()
-            
-            # Map Alpaca status to our OrderStatus enum
             status_mapping = {
                 "new": OrderStatus.PENDING,
                 "filled": OrderStatus.FILLED,
@@ -196,13 +153,9 @@ class AlpacaBroker(BaseBroker):
                 "rejected": OrderStatus.REJECTED,
                 "expired": OrderStatus.CANCELLED
             }
-            
-            # Determine quantity with sign based on side
             quantity = float(order_data["qty"])
             if order_data["side"] == "sell":
                 quantity = -quantity
-            
-            # Create TradeOrder object
             order = TradeOrder(
                 order_id=order_data["id"],
                 symbol=order_data["symbol"],
@@ -213,22 +166,14 @@ class AlpacaBroker(BaseBroker):
                 timestamp=datetime.fromisoformat(order_data["created_at"].replace("Z", "+00:00")),
                 fill_price=float(order_data["filled_avg_price"]) if order_data["filled_avg_price"] else None
             )
-            
             return order
-            
         except RequestException as e:
             self.logger.error(f"Failed to get order details from Alpaca: {str(e)}")
-            raise
+            return None
     
     def cancel_order(self, order_id: str) -> bool:
         """
-        Cancel an open order.
-        
-        Args:
-            order_id: Order ID to cancel
-            
-        Returns:
-            True if cancellation was successful, False otherwise
+        Cancel an open order. Returns False on error.
         """
         try:
             response = requests.delete(
@@ -237,16 +182,12 @@ class AlpacaBroker(BaseBroker):
                 verify=self.verify_ssl,
                 timeout=self.config.broker.alpaca_timeout
             )
-            
-            # 404 means order doesn't exist or is already cancelled/filled
             if response.status_code == 404:
                 self.logger.warning(f"Order {order_id} not found or already processed")
                 return False
-                
             response.raise_for_status()
             self.logger.info(f"Successfully cancelled order {order_id}")
             return True
-            
         except RequestException as e:
             self.logger.error(f"Failed to cancel order {order_id}: {str(e)}")
             return False

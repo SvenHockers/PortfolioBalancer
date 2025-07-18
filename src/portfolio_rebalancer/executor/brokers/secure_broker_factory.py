@@ -15,16 +15,9 @@ logger = logging.getLogger(__name__)
 class SecureBrokerFactory:
     """Factory for creating broker instances with secure credential management."""
     
-    def __init__(self, config: Config):
-        """
-        Initialize secure broker factory.
-        
-        Args:
-            config: Application configuration
-        """
+    def __init__(self, config: object):
+        """Initialize secure broker factory."""
         self.config = config
-        
-        # Create isolated instances for this factory to avoid test interference
         from ...common.security import EncryptionManager, CredentialManager
         self.encryption_manager = EncryptionManager(
             key_storage_path=config.security.key_storage_path
@@ -33,7 +26,6 @@ class SecureBrokerFactory:
             storage_path=config.security.credential_storage_path,
             encryption_manager=self.encryption_manager
         )
-        
         self._setup_credentials()
     
     def _setup_credentials(self) -> None:
@@ -74,61 +66,54 @@ class SecureBrokerFactory:
             logger.error(f"Failed to migrate credentials: {e}")
             raise SecurityError(f"Credential migration failed: {e}")
     
-    def create_broker(self, broker_type: Optional[str] = None) -> BrokerInterface:
+    def create_broker(self, broker_type: Optional[str] = None) -> Optional[BrokerInterface]:
         """
-        Create broker instance with secure credentials.
-        
-        Args:
-            broker_type: Optional broker type override
-            
-        Returns:
-            Configured broker instance
-            
-        Raises:
-            SecurityError: If credential retrieval fails
-            ValueError: If broker type is unsupported
+        Create broker instance with secure credentials. Returns None on error.
         """
-        if broker_type is None:
-            broker_type = self.config.executor.broker_type
-        
-        logger.info(f"Creating secure broker instance: {broker_type}")
-        
-        if broker_type == BrokerType.ALPACA.value:
-            return self._create_alpaca_broker()
-        elif broker_type == BrokerType.IB.value:
-            return self._create_ib_broker()
-        else:
-            raise ValueError(f"Unsupported broker type: {broker_type}")
+        try:
+            if broker_type is None:
+                broker_type = self.config.executor.broker_type
+            logger.info(f"Creating secure broker instance: {broker_type}")
+            if broker_type == BrokerType.ALPACA.value:
+                return self._create_alpaca_broker()
+            elif broker_type == BrokerType.IB.value:
+                return self._create_ib_broker()
+            else:
+                logger.error(f"Unsupported broker type: {broker_type}")
+                return None
+        except Exception as e:
+            logger.error(f"Failed to create broker: {e}")
+            return None
     
-    def _create_alpaca_broker(self) -> AlpacaBroker:
-        """Create Alpaca broker with secure credentials."""
-        if self.config.broker.use_encrypted_credentials and self.config.security.enable_encryption:
-            # Use encrypted credentials
-            api_key = self.credential_manager.get_credential("alpaca_api_key")
-            secret_key = self.credential_manager.get_credential("alpaca_secret_key")
-            
-            if not api_key or not secret_key:
-                raise SecurityError("Alpaca encrypted credentials not found")
-            
-            # Create a secure config copy with decrypted credentials
+    def _create_alpaca_broker(self) -> Optional[AlpacaBroker]:
+        """Create Alpaca broker with secure credentials. Returns None on error."""
+        try:
+            if self.config.broker.use_encrypted_credentials and self.config.security.enable_encryption:
+                api_key = self.credential_manager.get_credential("alpaca_api_key")
+                secret_key = self.credential_manager.get_credential("alpaca_secret_key")
+                if not api_key or not secret_key:
+                    logger.error("Alpaca encrypted credentials not found")
+                    return None
+                secure_config = self._create_secure_config_copy()
+                secure_config.broker.alpaca_api_key = api_key
+                secure_config.broker.alpaca_secret_key = secret_key
+                logger.info("Using encrypted Alpaca credentials")
+            else:
+                secure_config = self.config
+                logger.info("Using plain text Alpaca credentials")
+            return AlpacaBroker(secure_config)
+        except Exception as e:
+            logger.error(f"Failed to create Alpaca broker: {e}")
+            return None
+    
+    def _create_ib_broker(self) -> Optional[IBBroker]:
+        """Create Interactive Brokers broker instance. Returns None on error."""
+        try:
             secure_config = self._create_secure_config_copy()
-            secure_config.broker.alpaca_api_key = api_key
-            secure_config.broker.alpaca_secret_key = secret_key
-            
-            logger.info("Using encrypted Alpaca credentials")
-        else:
-            # Use plain text credentials from config
-            secure_config = self.config
-            logger.info("Using plain text Alpaca credentials")
-        
-        return AlpacaBroker(secure_config)
-    
-    def _create_ib_broker(self) -> IBBroker:
-        """Create Interactive Brokers broker instance."""
-        # IB typically uses connection-based auth, not API keys
-        # But we can still apply secure configuration
-        secure_config = self._create_secure_config_copy()
-        return IBBroker(secure_config)
+            return IBBroker(secure_config)
+        except Exception as e:
+            logger.error(f"Failed to create IB broker: {e}")
+            return None
     
     def _create_secure_config_copy(self) -> Config:
         """Create a copy of config for secure credential injection."""
