@@ -2,7 +2,6 @@
 set -e
 
 # Configuration
-REGISTRY="docker.io"
 IMAGE_PREFIX="svenhockers/portfoliobalancer"
 SERVICES=("fetcher" "optimizer" "executor" "scheduler")
 VERSION="${VERSION:-latest}"
@@ -55,11 +54,9 @@ USAGE:
     ./PortfolioBalancerManager.sh [COMMAND] [OPTIONS]
 
 COMMANDS:
-    (no args)       Download/pull all Docker images from registry
     up              Start all services (scheduler only by default)
     down            Stop all services
     restart         Restart all services
-    logs            Show logs for all services
     status          Show status of all services
     pull            Pull latest images from registry
     clean           Remove stopped containers and unused images
@@ -92,7 +89,7 @@ pull_images() {
     log_info "Pulling Docker images from registry..."
     
     for service in "${SERVICES[@]}"; do
-        local image="${REGISTRY}/${IMAGE_PREFIX}:${service}"
+        local image="${IMAGE_PREFIX}:${service}"
         log_info "Pulling ${image}..."
         
         if docker pull "${image}"; then
@@ -128,7 +125,7 @@ start_services() {
     export COMPOSE_PROJECT_NAME="portfolio-rebalancer"
     # Override image names to use registry images
     for service in "${SERVICES[@]}"; do
-        export "$(echo ${service} | tr '[:lower:]' '[:upper:]')_IMAGE=${REGISTRY}/${IMAGE_PREFIX}:${service}"
+        export "$(echo ${service} | tr '[:lower:]' '[:upper:]')_IMAGE=${IMAGE_PREFIX}:${service}"
     done
     
     if docker-compose ${profile} up -d ${extra_args}; then
@@ -159,26 +156,14 @@ restart_services() {
     start_services "$@"
 }
 
-show_logs() {
-    local service="${1:-}"
-    
-    if [[ -n "$service" ]]; then
-        log_info "Showing logs for ${service}..."
-        docker-compose logs -f "$service"
-    else
-        log_info "Showing logs for all services..."
-        docker-compose logs -f
-    fi
-}
-
 show_status() {
     log_info "Service status:"
-    docker-compose ps
+    docker ps
     
     echo
     log_info "Docker images:"
     for service in "${SERVICES[@]}"; do
-        local image="${REGISTRY}/${IMAGE_PREFIX}:${service}"
+        local image="${IMAGE_PREFIX}:${service}"
         if docker images --format "table {{.Repository}}:{{.Tag}}\t{{.Size}}\t{{.CreatedAt}}" | grep -q "${IMAGE_PREFIX}:${service}"; then
             echo "✓ ${image}"
         else
@@ -226,7 +211,7 @@ clean_up() {
     
     log_info "Removing portfolio rebalancer images..."
     for service in "${SERVICES[@]}"; do
-        local image="${REGISTRY}/${IMAGE_PREFIX}:${service}"
+        local image="${IMAGE_PREFIX}:${service}"
         
         if docker images --format "{{.Repository}}:{{.Tag}}" | grep -q "${IMAGE_PREFIX}:${service}"; then
             log_info "Removing image: ${image}"
@@ -282,12 +267,6 @@ while [[ $# -gt 0 ]]; do
             SUBCOMMAND="$1"
             shift || true
             ;;
-        logs)
-            COMMAND="logs"
-            shift
-            SERVICE="$1"
-            shift || true
-            ;;
         status)
             COMMAND="status"
             shift
@@ -324,9 +303,6 @@ case "${COMMAND:-pull}" in
         ;;
     "restart")
         restart_services "$SUBCOMMAND"
-        ;;
-    "logs")
-        show_logs "$SERVICE"
         ;;
     "status")
         show_status
