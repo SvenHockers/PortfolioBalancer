@@ -169,7 +169,7 @@ class OptimizerService:
             # Run optimization
             result = self.optimizer.optimize_portfolio(
                 tickers=self.config.data.tickers,
-                user_age=self.config.optimization.user_age,
+                investor_age=self.config.optimization.user_age,
                 lookback_days=self.config.optimization.lookback_days
             )
             
