@@ -156,6 +156,10 @@ class BrokerConfig:
     ib_port: int = 7497
     ib_client_id: int = 1
     ib_timeout: int = 30
+
+    # Trading212 configurations
+    t212_api_key: Optional[str] = None
+    t212_demo: bool = True
     
     # General broker settings
     max_retries: int = 3
