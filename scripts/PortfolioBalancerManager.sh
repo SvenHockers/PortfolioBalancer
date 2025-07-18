@@ -107,6 +107,16 @@ start_services() {
     local profile=""
     local extra_args=""
     
+    # Reload .env file if it exists
+    if [ -f .env ]; then
+        log_info "Reloading environment variables from .env file..."
+        set -a
+        source .env
+        set +a
+    else
+        log_warning ".env file not found. Using existing environment variables."
+    fi
+    
     case "${1:-}" in
         "monitoring")
             profile="--profile manual --profile monitoring"
