@@ -1,5 +1,10 @@
 # Portfolio Rebalancer
 
+> **Note: This project is under active development.**
+>
+> Initial releases may contain bugs, incomplete features, or other issues.  
+> We welcome feedback and contributions as the project evolves.
+
 An automated portfolio rebalancing system that fetches market data, optimizes allocations using Modern Portfolio Theory, and executes trades through broker APIs. Built with Python containerised with Docker and can be deployed using kubernettes.
 
 ## System Architecture
