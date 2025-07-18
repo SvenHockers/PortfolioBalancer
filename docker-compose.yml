@@ -8,7 +8,7 @@ services:
         BUILD_DATE: ${BUILD_DATE:-}
         VCS_REF: ${VCS_REF:-}
         VERSION: ${VERSION:-latest}
-    image: portfolio-rebalancer-scheduler:${VERSION:-latest}
+    image: ${SCHEDULER_IMAGE:-svenhockers/portfoliobalancer:scheduler}
     container_name: portfolio-scheduler
     ports:
       - "8083:8083"
@@ -37,6 +37,7 @@ services:
       - ALPACA_SECRET_KEY=${ALPACA_SECRET_KEY}
       - ALPACA_BASE_URL=${ALPACA_BASE_URL:-https://paper-api.alpaca.markets}
       - IB_HOST=${IB_HOST:-127.0.0.1}
+      - T212_API_KEY=${T212_API_KEY}
       - USE_ENCRYPTED_CREDENTIALS=${USE_ENCRYPTED_CREDENTIALS:-true}
 
       # Security Configuration
@@ -85,7 +86,7 @@ services:
         BUILD_DATE: ${BUILD_DATE:-}
         VCS_REF: ${VCS_REF:-}
         VERSION: ${VERSION:-latest}
-    image: portfolio-rebalancer-fetcher:${VERSION:-latest}
+    image: ${FETCHER_IMAGE:-svenhockers/portfoliobalancer:fetcher}
     container_name: portfolio-fetcher
     ports:
       - "8080:8080"
@@ -122,7 +123,7 @@ services:
         BUILD_DATE: ${BUILD_DATE:-}
         VCS_REF: ${VCS_REF:-}
         VERSION: ${VERSION:-latest}
-    image: portfolio-rebalancer-optimizer:${VERSION:-latest}
+    image: ${OPTIMIZER_IMAGE:-svenhockers/portfoliobalancer:optimizer}
     container_name: portfolio-optimizer
     ports:
       - "8081:8081"
@@ -164,7 +165,7 @@ services:
         BUILD_DATE: ${BUILD_DATE:-}
         VCS_REF: ${VCS_REF:-}
         VERSION: ${VERSION:-latest}
-    image: portfolio-rebalancer-executor:${VERSION:-latest}
+    image: ${EXECUTOR_IMAGE:-svenhockers/portfoliobalancer:executor}
     container_name: portfolio-executor
     ports:
       - "8082:8082"
@@ -180,6 +181,7 @@ services:
       - IB_HOST=${IB_HOST:-127.0.0.1}
       - IB_PORT=${IB_PORT:-7497}
       - IB_CLIENT_ID=${IB_CLIENT_ID:-1}
+      - T212_API_KEY=${T212_API_KEY}
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
       - LOG_FORMAT=${LOG_FORMAT:-json}
       - LOG_FILE_PATH=/app/logs/executor.log

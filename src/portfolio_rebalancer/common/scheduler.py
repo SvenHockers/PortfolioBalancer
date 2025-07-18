@@ -347,6 +347,14 @@ class Scheduler:
                 # In a real implementation, we would try to connect to the TWS API
                 # For now, just return a placeholder status
                 return ServiceStatus("broker", True, "Interactive Brokers configuration is valid")
+
+            elif broker_type == "t212":
+                api_key = self.config.broker.t212_api_key
+                demo = self.config.broker.t212_demo
+
+                if not api_key or demo:
+                    return ServiceStatus("broker", False, "Interactive Brokers configuration incomplete")
+                return ServiceStatus("broker", True, "Trading212 configuration is complete")
                 
             else:
                 return ServiceStatus("broker", False, f"Unknown broker type: {broker_type}")

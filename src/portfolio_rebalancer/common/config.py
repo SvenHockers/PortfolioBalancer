@@ -156,6 +156,10 @@ class BrokerConfig:
     ib_port: int = 7497
     ib_client_id: int = 1
     ib_timeout: int = 30
+
+    # Trading212 configurations
+    t212_api_key: Optional[str] = None
+    t212_demo: bool = True
     
     # General broker settings
     max_retries: int = 3
@@ -341,6 +345,8 @@ class ConfigManager:
         'broker.ib_port': ('IB_PORT', int),
         'broker.ib_client_id': ('IB_CLIENT_ID', int),
         'broker.ib_timeout': ('IB_TIMEOUT', int),
+        'broker.t212_api_key': ('T212_API_KEY', str),
+        'broker.t212_demo': ('T212_DEMO', str),
         'broker.max_retries': ('BROKER_MAX_RETRIES', int),
         'broker.retry_delay': ('BROKER_RETRY_DELAY', int),
         'broker.use_encrypted_credentials': ('USE_ENCRYPTED_CREDENTIALS', lambda x: x.lower() in ('true', '1', 'yes')),
