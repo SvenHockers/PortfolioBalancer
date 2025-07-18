@@ -34,7 +34,7 @@ COPY --from=builder /usr/local/bin /usr/local/bin
 
 COPY src/ ./src/
 COPY setup.py ./
-COPY .env.example ./
+COPY .env ./
 
 # Install src/ as package
 RUN pip install -e .

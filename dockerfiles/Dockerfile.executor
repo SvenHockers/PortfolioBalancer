@@ -29,7 +29,7 @@ COPY --from=builder /usr/local/bin /usr/local/bin
 
 COPY src/ ./src/
 COPY setup.py ./
-COPY .env.example ./
+COPY .env ./
 
 RUN pip install -e .
 

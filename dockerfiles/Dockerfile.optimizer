@@ -36,7 +36,7 @@ COPY --from=builder /usr/local/bin /usr/local/bin
 # Copy application code and setup files
 COPY src/ ./src/
 COPY setup.py ./
-COPY .env.example ./
+COPY .env ./
 
 # Install the package in development mode
 RUN pip install -e .
