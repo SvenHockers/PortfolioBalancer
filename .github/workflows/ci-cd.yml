@@ -44,7 +44,6 @@ jobs:
 
       - name: Run tests
         run: |
-          # Check if there are any test files
           if find tests/ -name "test_*.py" -o -name "*_test.py" | grep -q .; then
             echo "Running tests..."
             pytest tests/ -v \
@@ -53,7 +52,6 @@ jobs:
               --cov-report=term-missing
           else
             echo "No test files found - skipping tests"
-            # Create empty coverage file so artifacts don't fail
             echo '<?xml version="1.0" ?><coverage version="0.0"></coverage>' > coverage.xml
           fi
 
@@ -90,7 +88,7 @@ jobs:
 
       - name: Run Safety vulnerability check
         run: |
-          safety check || true
+          safety scan || true
 
   build:
     name: Build Docker Images
@@ -151,7 +149,6 @@ jobs:
       - name: Generate version
         id: version
         run: |
-          # Simple version based on commit count
           VERSION="v1.0.$(git rev-list --count HEAD)"
           echo "version=${VERSION}" >> $GITHUB_OUTPUT
 
