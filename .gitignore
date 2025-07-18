@@ -10,3 +10,4 @@
 
 # Ignore keys and private info
 *.keys
+.env
