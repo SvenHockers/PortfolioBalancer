@@ -143,10 +143,10 @@ class FetcherService:
         try:
             self.logger.info("Starting data fetch")
             
-            # Fetch data for all configured tickers
-            results = self.data_fetcher.backfill_missing_data(
+            # Ensure we have at least 1 year of data for all configured tickers
+            results = self.data_fetcher.ensure_one_year_data(
                 tickers=self.config.data.tickers,
-                days=self.config.data.backfill_days
+                force_update=False  # Only update if data is missing or insufficient
             )
             
             # Check if we got data back
@@ -154,7 +154,7 @@ class FetcherService:
                 from datetime import datetime
                 self.last_execution = datetime.now()
                 self.is_healthy = True
-                self.logger.info(f"Data fetch completed successfully - fetched {len(results)} records")
+                self.logger.info(f"Data fetch completed successfully - ensured at least 1 year of data for {len(results.index.get_level_values('symbol').unique())} tickers")
             else:
                 self.is_healthy = False
                 self.logger.error("Data fetch completed but no data was returned")

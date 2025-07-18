@@ -206,7 +206,8 @@ class DataFetcher:
     def get_historical_prices(
         self,
         tickers: Optional[List[str]] = None,
-        lookback_days: Optional[int] = None
+        lookback_days: Optional[int] = None,
+        ensure_minimum: bool = True
     ) -> pd.DataFrame:
         """
         Get historical price data for specified tickers.
@@ -214,6 +215,7 @@ class DataFetcher:
         Args:
             tickers: List of ticker symbols (if None, uses tickers from config)
             lookback_days: Number of days to look back (if None, uses lookback_days from optimization config)
+            ensure_minimum: Whether to ensure at least 1 year of data is available (default: True)
             
         Returns:
             DataFrame with historical price data
@@ -229,7 +231,16 @@ class DataFetcher:
             return pd.DataFrame()
         
         try:
-            # Get historical data from storage
+            # If ensure_minimum is True, use ensure_data_available to guarantee sufficient data
+            if ensure_minimum:
+                return self.ensure_data_available(
+                    tickers=tickers,
+                    lookback_days=lookback_days,
+                    force_update=False,
+                    min_trading_days=252
+                )
+            
+            # Otherwise, just get data from storage without ensuring minimum
             data = self.storage.get_prices(tickers, lookback_days=lookback_days)
             
             if data.empty:
@@ -248,17 +259,20 @@ class DataFetcher:
         self,
         tickers: Optional[List[str]] = None,
         lookback_days: Optional[int] = None,
-        force_update: bool = False
+        force_update: bool = False,
+        min_trading_days: int = 252
     ) -> pd.DataFrame:
         """
         Ensure data is available for specified tickers and lookback period.
         
         This method checks if data is available in storage and backfills if necessary.
+        Ensures at least 1 year (252 trading days) of data is available.
         
         Args:
             tickers: List of ticker symbols (if None, uses tickers from config)
             lookback_days: Number of days to ensure (if None, uses lookback_days from optimization config)
             force_update: Whether to force fetching latest data even if already available
+            min_trading_days: Minimum number of trading days required (default: 252 for 1 year)
             
         Returns:
             DataFrame with historical price data
@@ -273,9 +287,17 @@ class DataFetcher:
             logger.error("Lookback days must be positive")
             return pd.DataFrame()
         
+        # Ensure we have at least 1 year of data
+        required_days = max(lookback_days, min_trading_days)
+        logger.info(f"Ensuring at least {required_days} days of data (minimum {min_trading_days} trading days)")
+        
         try:
             # First, try to get data from storage
-            data = self.storage.get_prices(tickers, lookback_days=lookback_days)
+            data = self.storage.get_prices(tickers, lookback_days=required_days)
+            
+            # Initialize variables for tracking missing/incomplete data
+            missing_tickers = set()
+            incomplete_tickers = []
             
             # Check if we have complete data for all tickers
             if not data.empty:
@@ -288,37 +310,56 @@ class DataFetcher:
                     symbol_data = data.xs(symbol, level='symbol')
                     ticker_date_counts[symbol] = len(symbol_data)
                 
-                min_expected_dates = min(lookback_days, 252)  # Reasonable minimum for trading days in a year
+                # Calculate minimum expected dates (at least 1 year of trading days)
+                min_expected_dates = max(min_trading_days, int(required_days * 0.7))  # Account for weekends/holidays
                 incomplete_tickers = [
                     symbol for symbol, count in ticker_date_counts.items()
-                    if count < min_expected_dates * 0.7  # Allow for some missing days (weekends, holidays)
+                    if count < min_expected_dates
                 ]
                 
                 if not missing_tickers and not incomplete_tickers and not force_update:
-                    logger.info(f"Complete data already available for all {len(tickers)} tickers")
+                    logger.info(f"Complete data already available for all {len(tickers)} tickers (at least {min_trading_days} trading days)")
                     return data
                 
                 if missing_tickers:
                     logger.info(f"Missing data for tickers: {missing_tickers}")
                 
                 if incomplete_tickers:
-                    logger.info(f"Incomplete data for tickers: {incomplete_tickers}")
+                    logger.info(f"Incomplete data for tickers: {incomplete_tickers} (need at least {min_expected_dates} trading days)")
             else:
                 logger.info("No data available in storage, will backfill")
             
             # Only backfill if we need to (missing tickers, incomplete data, or force update)
             if data.empty or missing_tickers or incomplete_tickers or force_update:
-                # Backfill data
-                backfill_days = max(lookback_days, self.config.data.backfill_days)
-                backfilled_data = self.backfill_missing_data(tickers=tickers, days=backfill_days)
+                # Backfill data - ensure we get enough data for at least 1 year
+                backfill_days = max(required_days, self.config.data.backfill_days, min_trading_days * 2)  # Get extra data to ensure coverage
+                logger.info(f"Backfilling {backfill_days} days of data to ensure minimum {min_trading_days} trading days")
+                
+                self.backfill_missing_data(tickers=tickers, days=backfill_days)
                 
                 # Get the data again after backfill
-                updated_data = self.storage.get_prices(tickers, lookback_days=lookback_days)
+                updated_data = self.storage.get_prices(tickers, lookback_days=required_days)
                 
                 if updated_data.empty:
                     logger.warning("Still no data available after backfill")
                 else:
-                    logger.info(f"Successfully ensured data availability for {len(updated_data.index.get_level_values('symbol').unique())} tickers")
+                    # Verify we have sufficient data after backfill
+                    actual_tickers = set(updated_data.index.get_level_values('symbol').unique())
+                    if len(actual_tickers) == len(tickers):
+                        # Check data completeness for each ticker
+                        all_sufficient = True
+                        for symbol in actual_tickers:
+                            symbol_data = updated_data.xs(symbol, level='symbol')
+                            if len(symbol_data) < min_trading_days:
+                                logger.warning(f"Ticker {symbol} still has insufficient data: {len(symbol_data)} days (need {min_trading_days})")
+                                all_sufficient = False
+                        
+                        if all_sufficient:
+                            logger.info(f"Successfully ensured data availability for {len(actual_tickers)} tickers with at least {min_trading_days} trading days")
+                        else:
+                            logger.warning("Some tickers still have insufficient data after backfill")
+                    else:
+                        logger.warning(f"Missing data for some tickers after backfill: expected {len(tickers)}, got {len(actual_tickers)}")
                 
                 return updated_data
             
@@ -329,3 +370,21 @@ class DataFetcher:
             error_msg = f"Failed to ensure data availability: {e}"
             logger.error(error_msg)
             return pd.DataFrame()
+    
+    def ensure_one_year_data(self, tickers: Optional[List[str]] = None, force_update: bool = False) -> pd.DataFrame:
+        """
+        Convenience method to ensure at least 1 year (252 trading days) of data is available.
+        
+        Args:
+            tickers: List of ticker symbols (if None, uses tickers from config)
+            force_update: Whether to force fetching latest data even if already available
+            
+        Returns:
+            DataFrame with at least 1 year of historical price data
+        """
+        return self.ensure_data_available(
+            tickers=tickers,
+            lookback_days=365,  # Request 365 calendar days to ensure 252 trading days
+            force_update=force_update,
+            min_trading_days=252
+        )
