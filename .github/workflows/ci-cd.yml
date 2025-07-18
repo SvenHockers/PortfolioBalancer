@@ -117,11 +117,11 @@ jobs:
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-${{ matrix.service }}
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}
           tags: |
-            type=ref,event=branch
-            type=sha,prefix={{branch}}-
-            type=raw,value=latest,enable={{is_default_branch}}
+            type=raw,value=${{ matrix.service }}
+            type=raw,value=${{ matrix.service }}-{{branch}}
+            type=raw,value=${{ matrix.service }}-{{sha}}
 
       - name: Build and push Docker image
         uses: docker/build-push-action@v6
@@ -166,10 +166,10 @@ jobs:
           name: Portfolio Rebalancer ${{ steps.version.outputs.version }}
           body: |
             ## Docker Images
-            - `${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-fetcher:${{ steps.version.outputs.version }}`
-            - `${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-optimizer:${{ steps.version.outputs.version }}`
-            - `${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-executor:${{ steps.version.outputs.version }}`
-            - `${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-scheduler:${{ steps.version.outputs.version }}`
+            - `${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}:fetcher`
+            - `${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}:optimizer`
+            - `${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}:executor`
+            - `${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}:scheduler`
           draft: false
           prerelease: false
           generate_release_notes: true
