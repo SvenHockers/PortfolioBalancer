@@ -2,10 +2,9 @@
 
 import logging
 import logging.config
-import json
 import sys
 import traceback
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Dict, Any, Optional, Union
 import uuid
 from contextlib import contextmanager
@@ -15,51 +14,31 @@ import os
 from .config import get_config
 
 
-class JSONFormatter(logging.Formatter):
-    """Custom formatter for structured JSON logging."""
-    
+class LokiLineFormatter(logging.Formatter):
+    """Formatter for Loki-compatible single-line log output (key=value pairs)."""
     def format(self, record: logging.LogRecord) -> str:
-        """Format log record as JSON."""
-        log_entry = {
-            "timestamp": datetime.utcnow().isoformat() + "Z",
-            "level": record.levelname,
-            "logger": record.name,
-            "message": record.getMessage(),
-            "module": record.module,
-            "function": record.funcName,
-            "line": record.lineno,
-        }
-        
-        # Add correlation ID if available
+        log_entry = [
+            f'timestamp="{datetime.now(timezone.utc).isoformat()}"',
+            f'level={record.levelname}',
+            f'logger={record.name}',
+            f'message="{record.getMessage()}"',
+            f'module={record.module}',
+            f'function={record.funcName}',
+            f'line={record.lineno}',
+        ]
         correlation_id = getattr(_context, 'correlation_id', None)
         if correlation_id:
-            log_entry["correlation_id"] = correlation_id
-        
-        # Add exception info if present
+            log_entry.append(f'correlation_id={correlation_id}')
         if record.exc_info:
-            log_entry["exception"] = self.formatException(record.exc_info)
-        
-        # Add extra fields from record
+            log_entry.append(f'exception="{self.formatException(record.exc_info)}"')
         for key, value in record.__dict__.items():
             if key not in ['name', 'msg', 'args', 'levelname', 'levelno', 'pathname', 
                           'filename', 'module', 'lineno', 'funcName', 'created', 
                           'msecs', 'relativeCreated', 'thread', 'threadName', 
                           'processName', 'process', 'getMessage', 'exc_info', 
                           'exc_text', 'stack_info']:
-                log_entry[key] = value
-        
-        return json.dumps(log_entry, default=str)
-
-
-class TextFormatter(logging.Formatter):
-    """Standard text formatter with correlation ID support."""
-    
-    def format(self, record: logging.LogRecord) -> str:
-        """Format log record as text with correlation ID."""
-        correlation_id = getattr(_context, 'correlation_id', None)
-        # Always set correlation_id attribute, even if None or empty string
-        record.correlation_id = correlation_id or ""
-        return super().format(record)
+                log_entry.append(f'{key}={value}')
+        return ' '.join(log_entry)
 
 
 # Thread-local storage for correlation IDs
@@ -69,16 +48,10 @@ _context = local()
 def setup_logging() -> None:
     """Set up logging configuration based on config settings."""
     config = get_config()
-    
-    # Determine formatter based on config
-    if config.logging.format == "json":
-        formatter_class = JSONFormatter
-        format_string = None  # Not used for JSON formatter
-    else:
-        formatter_class = TextFormatter
-        format_string = "%(asctime)s - %(name)s - %(levelname)s - %(correlation_id)s - %(message)s"
-    
-    # Configure logging
+
+    # Use LokiLineFormatter for Loki-compatible single-line logs
+    formatter_class = LokiLineFormatter
+
     logging_config = {
         "version": 1,
         "disable_existing_loggers": False,
@@ -106,8 +79,7 @@ def setup_logging() -> None:
             }
         }
     }
-    
-    # Add file handler if file path is specified
+
     if config.logging.file_path:
         logging_config["handlers"]["file"] = {
             "class": "logging.FileHandler",
@@ -116,11 +88,7 @@ def setup_logging() -> None:
         }
         logging_config["root"]["handlers"].append("file")
         logging_config["loggers"]["portfolio_rebalancer"]["handlers"].append("file")
-    
-    # Apply text formatter format string if using text format
-    if config.logging.format == "text":
-        logging_config["formatters"]["default"]["format"] = format_string
-    
+
     logging.config.dictConfig(logging_config)
 
 
@@ -232,18 +200,14 @@ def setup_container_logging() -> None:
         "version": 1,
         "disable_existing_loggers": False,
         "formatters": {
-            "json": {
-                "()": JSONFormatter,
+            "default": {
+                "()": LokiLineFormatter,
             },
-            "text": {
-                "()": TextFormatter,
-                "format": "%(asctime)s - %(name)s - %(levelname)s - %(correlation_id)s - %(message)s"
-            }
         },
         "handlers": {
             "console": {
                 "class": "logging.StreamHandler",
-                "formatter": "json" if config.logging.format == "json" else "text",
+                "formatter": "default",
                 "stream": sys.stdout,
             }
         },
@@ -274,7 +238,7 @@ def setup_container_logging() -> None:
     if config.logging.file_path:
         logging_config["handlers"]["file"] = {
             "class": "logging.FileHandler",
-            "formatter": "json" if config.logging.format == "json" else "text",
+            "formatter": "default",
             "filename": config.logging.file_path,
         }
         logging_config["root"]["handlers"].append("file")
