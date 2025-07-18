@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   # Main scheduler service for automated daily execution
   scheduler:
@@ -20,7 +18,7 @@ services:
       - STORAGE_TYPE=${STORAGE_TYPE:-parquet}
       - STORAGE_PATH=/app/data
       - BACKFILL_DAYS=${BACKFILL_DAYS:-252}
-      
+
       # Optimization Configuration
       - USER_AGE=${USER_AGE:-35}
       - RISK_FREE_RATE=${RISK_FREE_RATE:-0.02}
@@ -28,19 +26,19 @@ services:
       - MIN_WEIGHT=${MIN_WEIGHT:-0.0}
       - MAX_WEIGHT=${MAX_WEIGHT:-0.4}
       - SAFE_PORTFOLIO_BONDS=${SAFE_PORTFOLIO_BONDS:-0.8}
-      
+
       # Executor Configuration
       - REBALANCE_THRESHOLD=${REBALANCE_THRESHOLD:-0.05}
       - ORDER_TYPE=${ORDER_TYPE:-market}
       - BROKER_TYPE=${BROKER_TYPE:-alpaca}
-      
+
       # Broker Configuration
       - ALPACA_API_KEY=${ALPACA_API_KEY}
       - ALPACA_SECRET_KEY=${ALPACA_SECRET_KEY}
       - ALPACA_BASE_URL=${ALPACA_BASE_URL:-https://paper-api.alpaca.markets}
       - IB_HOST=${IB_HOST:-127.0.0.1}
       - USE_ENCRYPTED_CREDENTIALS=${USE_ENCRYPTED_CREDENTIALS:-true}
-      
+
       # Security Configuration
       - ENABLE_ENCRYPTION=${ENABLE_ENCRYPTION:-true}
       - CREDENTIAL_STORAGE_PATH=${CREDENTIAL_STORAGE_PATH:-/app/.credentials}
@@ -50,13 +48,14 @@ services:
       - SSL_VERIFY=${SSL_VERIFY:-true}
       - IB_PORT=${IB_PORT:-7497}
       - IB_CLIENT_ID=${IB_CLIENT_ID:-1}
-      
+
       # Scheduler Configuration
       - EXECUTION_TIME=${EXECUTION_TIME:-16:30}
+      - SCHEDULE_INTERVAL_MINUTES=${SCHEDULE_INTERVAL_MINUTES:-}
       - TIMEZONE=${TIMEZONE:-America/New_York}
       - RETRY_ATTEMPTS=${RETRY_ATTEMPTS:-3}
       - RETRY_DELAY=${RETRY_DELAY:-300}
-      
+
       # Logging Configuration
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
       - LOG_FORMAT=${LOG_FORMAT:-json}
@@ -223,21 +222,50 @@ services:
     image: prom/prometheus:latest
     container_name: portfolio-prometheus
     command:
-      - '--config.file=/etc/prometheus/prometheus.yml'
-      - '--storage.tsdb.path=/prometheus'
-      - '--web.console.libraries=/etc/prometheus/console_libraries'
-      - '--web.console.templates=/etc/prometheus/consoles'
-      - '--storage.tsdb.retention.time=200h'
-      - '--web.enable-lifecycle'
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--web.console.libraries=/etc/prometheus/console_libraries"
+      - "--web.console.templates=/etc/prometheus/consoles"
+      - "--storage.tsdb.retention.time=200h"
+      - "--web.enable-lifecycle"
     ports:
       - "9090:9090"
+    networks:
+      - portfolio-network
     volumes:
       - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml
       - prometheus_data:/prometheus
     profiles: ["monitoring"]
     restart: unless-stopped
 
-  # Optional: Grafana for visualization
+  loki:
+    image: grafana/loki:2.9.3
+    container_name: portfolio-loki
+    command: -config.file=/etc/loki/local-config.yaml
+    ports:
+      - "3100:3100"
+    volumes:
+      - ./monitoring/loki-config.yaml:/etc/loki/local-config.yaml
+      - loki_storage:/loki
+    networks:
+      - portfolio-network
+    profiles: ["monitoring"]
+    restart: unless-stopped
+    user: root
+
+  promtail:
+    image: grafana/promtail:2.9.3
+    container_name: portfolio-promtail
+    volumes:
+      - ./monitoring/promtail-config.yaml:/etc/promtail/config.yaml
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    command: -config.file=/etc/promtail/config.yaml
+    networks:
+      - portfolio-network
+    profiles: ["monitoring"]
+    restart: unless-stopped
+
   grafana:
     image: grafana/grafana:latest
     container_name: portfolio-grafana
@@ -246,6 +274,8 @@ services:
     environment:
       - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD:-admin}
       - GF_USERS_ALLOW_SIGN_UP=false
+    networks:
+      - portfolio-network
     volumes:
       - grafana_data:/var/lib/grafana
       - ./monitoring/grafana/dashboards:/etc/grafana/provisioning/dashboards
@@ -253,6 +283,7 @@ services:
     profiles: ["monitoring"]
     depends_on:
       - prometheus
+      - loki
     restart: unless-stopped
 
   # Optional: Redis for caching and message queuing
@@ -261,6 +292,8 @@ services:
     container_name: portfolio-redis
     ports:
       - "6379:6379"
+    networks:
+      - portfolio-network
     volumes:
       - redis_data:/data
     profiles: ["cache"]
@@ -275,6 +308,8 @@ services:
       - POSTGRES_DB=${POSTGRES_DB:-portfolio_rebalancer}
       - POSTGRES_USER=${POSTGRES_USER:-portfolio_user}
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-portfolio_pass}
+    networks:
+      - portfolio-network
     ports:
       - "5432:5432"
     volumes:
@@ -303,6 +338,8 @@ services:
           sleep 86400
         done
       "
+    networks:
+      - portfolio-network
     volumes:
       - portfolio_data:/app/data:ro
       - portfolio_backup:/backup
@@ -326,19 +363,21 @@ volumes:
       type: none
       o: bind
       device: ${LOGS_PATH:-${PWD}/logs}
-  
+
   # Monitoring volumes
   prometheus_data:
     driver: local
   grafana_data:
     driver: local
-  
+  loki_storage:
+    driver: local
+
   # Cache and database volumes
   redis_data:
     driver: local
   postgres_data:
     driver: local
-  
+
   # Backup volumes for data safety
   portfolio_backup:
     driver: local

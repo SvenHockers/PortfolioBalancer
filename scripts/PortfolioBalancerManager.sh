@@ -37,12 +37,22 @@ check_docker() {
     fi
 }
 
+case "$1" in
+    "" )
+        # No arguments: default to 'up manual'
+        set -- up manual
+        ;;
+    * )
+        # Do nothing, proceed as normal
+        ;;
+esac
+
 help() {
     cat << EOF
-Portfolio Rebalancer Management Script
+PortfolioBalancerManager Rebalancer Management Script
 
 USAGE:
-    ./portfolio.sh [COMMAND] [OPTIONS]
+    ./PortfolioBalancerManager.sh [COMMAND] [OPTIONS]
 
 COMMANDS:
     (no args)       Download/pull all Docker images from registry
@@ -62,16 +72,16 @@ OPTIONS:
     -h, --help      Show this help message
 
 EXAMPLES:
-    ./portfolio.sh              # Pull all images
-    ./portfolio.sh up           # Start scheduler service
-    ./portfolio.sh up manual    # Start all manual services
-    ./portfolio.sh logs         # Show all service logs
-    ./portfolio.sh -v v1.0.1 up # Start with specific version
+    ./PortfolioBalancerManager.sh              # Pull all images
+    ./PortfolioBalancerManager.sh up           # Start the service
+    ./PortfolioBalancerManager.sh up monitoring # Start service and monitoring tools
+    ./PortfolioBalancerManager.sh logs         # Show all service logs
+    ./PortfolioBalancerManager.sh -v v1.0.1 up # Start with specific version
 
 SERVICES:
-    - scheduler: Automated daily portfolio rebalancing
+    - scheduler: Automated daily PortfolioBalancerManager rebalancing
     - fetcher: Manual data fetching
-    - optimizer: Manual portfolio optimization
+    - optimizer: Manual PortfolioBalancerManager optimization
     - executor: Manual trade execution
 
 EOF
@@ -101,19 +111,16 @@ start_services() {
     local extra_args=""
     
     case "${1:-}" in
-        "manual")
-            profile="--profile manual"
-            log_info "Starting manual services (fetcher, optimizer, executor)..."
-            ;;
         "monitoring")
-            profile="--profile monitoring"
-            log_info "Starting with monitoring services..."
+            profile="--profile manual --profile monitoring"
+            log_info "Starting with monitoring and manual services..."
             ;;
         "full")
             profile="--profile manual --profile monitoring --profile cache --profile database"
             log_info "Starting all services..."
             ;;
         *)
+            profile="--profile manual"
             log_info "Starting scheduler service..."
             ;;
     esac
@@ -126,8 +133,8 @@ start_services() {
     
     if docker-compose ${profile} up -d ${extra_args}; then
         log_success "Services started successfully!"
-        log_info "Use './portfolio.sh logs' to view logs"
-        log_info "Use './portfolio.sh status' to check service status"
+        log_info "Use './PortfolioBalancerManager.sh logs' to view logs"
+        log_info "Use './PortfolioBalancerManager.sh status' to check service status"
     else
         log_error "Failed to start services"
         return 1
@@ -237,14 +244,14 @@ clean_up() {
     if [[ $REPLY =~ ^[Yy]$ ]]; then
         log_info "Removing portfolio volumes..."
         docker volume ls --filter "name=portfolio" --format "{{.Name}}" | xargs -r docker volume rm 2>/dev/null || true
-        log_warning "Portfolio data volumes removed!"
+        log_warning "portfolio data volumes removed!"
     fi
     
     # Clean up project-specific networks
     log_info "Removing portfolio networks..."
     docker network ls --filter "name=portfolio" --format "{{.Name}}" | xargs -r docker network rm 2>/dev/null || true
     
-    log_success "Portfolio rebalancer cleanup completed!"
+    log_success "portfolio rebalancer cleanup completed!"
     log_info "Other Docker resources left untouched"
 }
 
