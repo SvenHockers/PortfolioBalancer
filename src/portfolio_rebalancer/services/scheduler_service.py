@@ -13,7 +13,7 @@ from datetime import datetime
 from ..common.config import get_config
 from ..common.logging import setup_logging
 from ..common.scheduler import Scheduler
-from ..common.orchestration import PipelineOrchestrator
+from ..common.container_orchestration import ContainerOrchestrator
 
 
 class SchedulerService:
@@ -26,7 +26,7 @@ class SchedulerService:
         self.logger = logging.getLogger(__name__)
         
         # Initialize orchestrator and scheduler
-        self.orchestrator = PipelineOrchestrator()
+        self.orchestrator = ContainerOrchestrator()
         self.scheduler = Scheduler(orchestrator=self.orchestrator)
         
         # Flask app for health checks
@@ -122,7 +122,7 @@ class SchedulerService:
         """Setup the scheduled jobs."""
         try:
             # Check if interval scheduling is requested
-            interval_minutes = os.getenv('SCHEDULE_INTERVAL_MINUTES')
+            interval_minutes = self.config.scheduler.schedule_interval_minutes
             
             if interval_minutes:
                 # Use interval scheduling for testing

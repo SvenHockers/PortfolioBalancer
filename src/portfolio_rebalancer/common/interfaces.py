@@ -1,9 +1,10 @@
-"""Abstract base classes defining core system interfaces."""
+"""Common interfaces for the portfolio rebalancer system."""
 
 from abc import ABC, abstractmethod
 from datetime import date
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Any
 import pandas as pd
+from enum import Enum
 
 
 class DataProvider(ABC):
@@ -109,5 +110,82 @@ class BrokerInterface(ABC):
             
         Returns:
             Order status string
+        """
+        pass
+
+
+class PipelineStep(Enum):
+    """Enumeration of pipeline steps."""
+    DATA_FETCH = "data_fetch"
+    OPTIMIZATION = "optimization"
+    EXECUTION = "execution"
+
+
+class PipelineStatus(Enum):
+    """Enumeration of pipeline execution status."""
+    PENDING = "pending"
+    RUNNING = "running"
+    COMPLETED = "completed"
+    FAILED = "failed"
+    SKIPPED = "skipped"
+
+
+class StepResult:
+    """Result of a pipeline step execution."""
+    
+    def __init__(self, 
+                 step: PipelineStep, 
+                 status: PipelineStatus, 
+                 result: Any = None, 
+                 error: str = None):
+        """
+        Initialize step result.
+        
+        Args:
+            step: Pipeline step
+            status: Execution status
+            result: Step execution result (if any)
+            error: Error message that occurred (if any)
+        """
+        self.step = step
+        self.status = status
+        self.result = result
+        self.error = error
+        self.start_time = None
+        self.end_time = None
+        self.duration = None
+    
+    def set_timing(self, start_time, end_time) -> None:
+        """Set timing information for the step."""
+        self.start_time = start_time
+        self.end_time = end_time
+        self.duration = (end_time - start_time).total_seconds()
+
+
+class PipelineOrchestratorInterface(ABC):
+    """
+    Abstract base class for pipeline orchestrators.
+    
+    This interface defines the contract that all orchestrators must implement,
+    whether they coordinate services in-process or via HTTP calls.
+    """
+    
+    @abstractmethod
+    def execute_pipeline(self) -> Dict[PipelineStep, StepResult]:
+        """
+        Execute the complete pipeline.
+        
+        Returns:
+            Dictionary mapping pipeline steps to their results
+        """
+        pass
+    
+    @abstractmethod
+    def get_pipeline_status(self) -> Dict[str, Any]:
+        """
+        Get current status of the pipeline.
+        
+        Returns:
+            Dictionary with pipeline status information
         """
         pass

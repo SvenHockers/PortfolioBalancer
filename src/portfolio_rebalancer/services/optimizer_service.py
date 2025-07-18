@@ -119,6 +119,42 @@ class OptimizerService:
                     'service': 'portfolio-optimizer',
                     'error': str(e)
                 }), 503
+        
+        @self.app.route('/optimize', methods=['POST'])
+        def optimize_portfolio_endpoint():
+            """Execute portfolio optimization via HTTP endpoint."""
+            try:
+                self.logger.info("Portfolio optimization requested via HTTP endpoint")
+                
+                success = self.optimize_portfolio()
+                
+                if success and self.last_optimization_result:
+                    return jsonify({
+                        'status': 'success',
+                        'service': 'portfolio-optimizer',
+                        'message': 'Portfolio optimization completed successfully',
+                        'last_execution': self.last_execution.isoformat() if self.last_execution else None,
+                        'result': {
+                            'expected_return': self.last_optimization_result.get('expected_return'),
+                            'expected_volatility': self.last_optimization_result.get('expected_volatility'),
+                            'sharpe_ratio': self.last_optimization_result.get('sharpe_ratio'),
+                            'allocation_count': len(self.last_optimization_result.get('allocations', {}))
+                        }
+                    }), 200
+                else:
+                    return jsonify({
+                        'status': 'failed',
+                        'service': 'portfolio-optimizer',
+                        'message': 'Portfolio optimization failed'
+                    }), 500
+                    
+            except Exception as e:
+                self.logger.error(f"Portfolio optimization endpoint failed: {str(e)}")
+                return jsonify({
+                    'status': 'error',
+                    'service': 'portfolio-optimizer',
+                    'error': str(e)
+                }), 500
     
     def optimize_portfolio(self) -> bool:
         """

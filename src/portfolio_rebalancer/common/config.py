@@ -188,6 +188,7 @@ class BrokerConfig:
 class SchedulerConfig:
     """Configuration for scheduling and orchestration."""
     execution_time: str = "16:30"  # After market close
+    schedule_interval_minutes: Optional[int] = None
     timezone: str = "America/New_York"
     retry_attempts: int = 3
     retry_delay: int = 300  # 5 minutes
@@ -361,6 +362,7 @@ class ConfigManager:
         
         # Scheduler configuration
         'scheduler.execution_time': ('EXECUTION_TIME', str),
+        'scheduler.schedule_interval_minutes': ('SCHEDULE_INTERVAL_MINUTES', str),
         'scheduler.timezone': ('TIMEZONE', str),
         'scheduler.retry_attempts': ('RETRY_ATTEMPTS', int),
         'scheduler.retry_delay': ('RETRY_DELAY', int),

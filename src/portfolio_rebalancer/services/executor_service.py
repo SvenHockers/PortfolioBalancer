@@ -113,6 +113,42 @@ class ExecutorService:
                     'service': 'trade-executor',
                     'error': str(e)
                 }), 503
+        
+        @self.app.route('/execute', methods=['POST'])
+        def execute_trades_endpoint():
+            """Execute trade rebalancing via HTTP endpoint."""
+            try:
+                self.logger.info("Trade execution requested via HTTP endpoint")
+                
+                success = self.execute_trades()
+                
+                if success and self.last_execution_result:
+                    return jsonify({
+                        'status': 'success',
+                        'service': 'trade-executor',
+                        'message': 'Trade execution completed successfully',
+                        'last_execution': self.last_execution.isoformat() if self.last_execution else None,
+                        'result': {
+                            'rebalancing_needed': self.last_execution_result.get('rebalancing_needed'),
+                            'trades_executed': len(self.last_execution_result.get('trades', [])),
+                            'total_drift': self.last_execution_result.get('total_drift'),
+                            'success': self.last_execution_result.get('success')
+                        }
+                    }), 200
+                else:
+                    return jsonify({
+                        'status': 'failed',
+                        'service': 'trade-executor',
+                        'message': 'Trade execution failed'
+                    }), 500
+                    
+            except Exception as e:
+                self.logger.error(f"Trade execution endpoint failed: {str(e)}")
+                return jsonify({
+                    'status': 'error',
+                    'service': 'trade-executor',
+                    'error': str(e)
+                }), 500
     
     def _check_broker_health(self) -> bool:
         """

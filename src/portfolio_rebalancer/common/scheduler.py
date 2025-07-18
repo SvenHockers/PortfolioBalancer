@@ -13,6 +13,7 @@ import traceback
 from .config import get_config
 from .logging import correlation_context
 from .orchestration import PipelineOrchestrator
+from .interfaces import PipelineOrchestratorInterface
 
 
 class SchedulerError(Exception):
@@ -49,7 +50,7 @@ class Scheduler:
     4. Managing scheduled jobs
     """
     
-    def __init__(self, orchestrator: Optional[PipelineOrchestrator] = None):
+    def __init__(self, orchestrator: Optional[PipelineOrchestratorInterface] = None):
         """
         Initialize scheduler service.
         
@@ -282,85 +283,62 @@ class Scheduler:
     
     def _check_data_provider_health(self) -> ServiceStatus:
         """
-        Check health of data provider.
+        Check health of data fetcher service and its data provider connectivity.
         
         Returns:
             ServiceStatus object
         """
         try:
-            # For yfinance, we can check by making a simple request
-            import yfinance as yf
+            response = requests.get("http://data-fetcher:8080/health", timeout=10)
             
-            # Try to fetch a single data point for a well-known ticker
-            ticker = yf.Ticker("AAPL")
-            info = ticker.info
-            
-            if info and "symbol" in info:
-                return ServiceStatus("data_provider", True, "yfinance API is accessible")
-            else:
-                return ServiceStatus("data_provider", False, "yfinance API returned incomplete data")
+            if response.status_code == 200:
+                health_data = response.json()
                 
+                # Check if the service status is healthy
+                if health_data.get("status") == "healthy":
+                    storage_type = health_data.get("storage_type", "unknown")
+                    tickers_count = health_data.get("tickers_count", 0)
+                    return ServiceStatus("data_provider", True, f"Data fetcher service healthy, storage: {storage_type}, tickers: {tickers_count}")
+                else:
+                    return ServiceStatus("data_provider", False, f"Data fetcher service unhealthy: {health_data.get('status', 'unknown')}")
+            else:
+                return ServiceStatus("data_provider", False, f"Data fetcher service returned status {response.status_code}")
+                
+        except requests.exceptions.ConnectionError:
+            return ServiceStatus("data_provider", False, "Cannot connect to data fetcher service")
+        except requests.exceptions.Timeout:
+            return ServiceStatus("data_provider", False, "Data fetcher service health check timed out")
         except Exception as e:
-            return ServiceStatus("data_provider", False, f"yfinance API check failed: {str(e)}")
+            return ServiceStatus("data_provider", False, f"Data fetcher service health check failed: {str(e)}")
     
     def _check_broker_health(self) -> ServiceStatus:
         """
-        Check health of broker API.
+        Check health of executor service and its broker connectivity.
         
         Returns:
             ServiceStatus object
         """
-        broker_type = self.config.executor.broker_type
-        
-        try:
-            if broker_type == "alpaca":
-                # Check Alpaca API health
-                api_key = self.config.broker.alpaca_api_key
-                secret_key = self.config.broker.alpaca_secret_key
-                base_url = self.config.broker.alpaca_base_url
+        try:            
+            response = requests.get("http://executor:8082/health", timeout=10)
+            
+            if response.status_code == 200:
+                health_data = response.json()
                 
-                if not api_key or not secret_key:
-                    return ServiceStatus("broker", False, "Alpaca API credentials not configured")
-                
-                # Make a simple request to check API health
-                headers = {
-                    "APCA-API-KEY-ID": api_key,
-                    "APCA-API-SECRET-KEY": secret_key
-                }
-                
-                response = requests.get(f"{base_url}/v2/account", headers=headers)
-                
-                if response.status_code == 200:
-                    return ServiceStatus("broker", True, "Alpaca API is accessible")
+                # Check if the service status is healthy
+                if health_data.get("status") == "healthy":
+                    broker_type = health_data.get("broker_type", "unknown")
+                    return ServiceStatus("broker", True, f"Executor service healthy, broker type: {broker_type}")
                 else:
-                    return ServiceStatus("broker", False, f"Alpaca API returned status {response.status_code}")
-                    
-            elif broker_type == "ib":
-                # For Interactive Brokers, we would need to check the connection
-                # This is a simplified check that just verifies the configuration
-                host = self.config.broker.ib_host
-                port = self.config.broker.ib_port
-                
-                if not host or not port:
-                    return ServiceStatus("broker", False, "Interactive Brokers configuration incomplete")
-                
-                # In a real implementation, we would try to connect to the TWS API
-                # For now, just return a placeholder status
-                return ServiceStatus("broker", True, "Interactive Brokers configuration is valid")
-
-            elif broker_type == "t212":
-                api_key = self.config.broker.t212_api_key
-                demo = self.config.broker.t212_demo
-
-                if not api_key or demo:
-                    return ServiceStatus("broker", False, "Interactive Brokers configuration incomplete")
-                return ServiceStatus("broker", True, "Trading212 configuration is complete")
-                
+                    return ServiceStatus("broker", False, f"Executor service unhealthy: {health_data.get('status', 'unknown')}")
             else:
-                return ServiceStatus("broker", False, f"Unknown broker type: {broker_type}")
+                return ServiceStatus("broker", False, f"Executor service returned status {response.status_code}")
                 
+        except requests.exceptions.ConnectionError:
+            return ServiceStatus("broker", False, "Cannot connect to executor service")
+        except requests.exceptions.Timeout:
+            return ServiceStatus("broker", False, "Executor service health check timed out")
         except Exception as e:
-            return ServiceStatus("broker", False, f"Broker health check failed: {str(e)}")
+            return ServiceStatus("broker", False, f"Executor service health check failed: {str(e)}")
     
     def _send_notification(self, message: str) -> None:
         """

@@ -102,6 +102,36 @@ class FetcherService:
                     'service': 'data-fetcher',
                     'error': str(e)
                 }), 503
+        
+        @self.app.route('/fetch', methods=['POST'])
+        def fetch_data_endpoint():
+            """Execute data fetching via HTTP endpoint."""
+            try:
+                self.logger.info("Data fetch requested via HTTP endpoint")
+                
+                success = self.fetch_data()
+                
+                if success:
+                    return jsonify({
+                        'status': 'success',
+                        'service': 'data-fetcher',
+                        'message': 'Data fetch completed successfully',
+                        'last_execution': self.last_execution.isoformat() if self.last_execution else None
+                    }), 200
+                else:
+                    return jsonify({
+                        'status': 'failed',
+                        'service': 'data-fetcher',
+                        'message': 'Data fetch failed'
+                    }), 500
+                    
+            except Exception as e:
+                self.logger.error(f"Data fetch endpoint failed: {str(e)}")
+                return jsonify({
+                    'status': 'error',
+                    'service': 'data-fetcher',
+                    'error': str(e)
+                }), 500
     
     def fetch_data(self) -> bool:
         """

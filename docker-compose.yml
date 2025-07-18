@@ -70,6 +70,12 @@ services:
     depends_on:
       data-storage:
         condition: service_completed_successfully
+      data-fetcher:
+        condition: service_healthy
+      optimizer:
+        condition: service_healthy
+      executor:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8083/health"]
       interval: 30s
@@ -77,7 +83,7 @@ services:
       retries: 3
       start_period: 40s
 
-  # Data fetcher service (manual execution)
+  # Data fetcher service
   data-fetcher:
     build:
       context: .
@@ -103,7 +109,6 @@ services:
       - portfolio_logs:/app/logs
     networks:
       - portfolio-network
-    profiles: ["manual"]
     depends_on:
       data-storage:
         condition: service_completed_successfully
@@ -114,7 +119,7 @@ services:
       retries: 3
       start_period: 40s
 
-  # Portfolio optimizer service (manual execution)
+  # Portfolio optimizer service
   optimizer:
     build:
       context: .
@@ -145,7 +150,6 @@ services:
       - portfolio_logs:/app/logs
     networks:
       - portfolio-network
-    profiles: ["manual"]
     depends_on:
       data-storage:
         condition: service_completed_successfully
@@ -156,7 +160,7 @@ services:
       retries: 3
       start_period: 40s
 
-  # Trade executor service (manual execution)
+  # Trade executor service
   executor:
     build:
       context: .
@@ -190,7 +194,6 @@ services:
       - portfolio_logs:/app/logs
     networks:
       - portfolio-network
-    profiles: ["manual"]
     depends_on:
       data-storage:
         condition: service_completed_successfully
