@@ -1,24 +1,32 @@
 #!/bin/bash
 set -e
 
-# Usage: ./build-local-images.sh [scheduler|fetcher|optimizer|executor ...]
-# If no arguments are provided, all images are built.
-
 IMAGES=(scheduler fetcher optimizer executor)
-DOCKERFILES=(
-  [scheduler]=dockerfiles/Dockerfile.scheduler
-  [fetcher]=dockerfiles/Dockerfile.fetcher
-  [optimizer]=dockerfiles/Dockerfile.optimizer
-  [executor]=dockerfiles/Dockerfile.executor
-)
-TAGS=(
-  [scheduler]=svenhockers/portfoliobalancer:scheduler
-  [fetcher]=svenhockers/portfoliobalancer:fetcher
-  [optimizer]=svenhockers/portfoliobalancer:optimizer
-  [executor]=svenhockers/portfoliobalancer:executor
-)
+DOCKERFILES=(dockerfiles/Dockerfile.scheduler dockerfiles/Dockerfile.fetcher dockerfiles/Dockerfile.optimizer dockerfiles/Dockerfile.executor)
+TAGS=(svenhockers/portfoliobalancer:scheduler svenhockers/portfoliobalancer:fetcher svenhockers/portfoliobalancer:optimizer svenhockers/portfoliobalancer:executor)
 
-# If no args, build all
+get_dockerfile() {
+    local image=$1
+    for i in "${!IMAGES[@]}"; do
+        if [[ "${IMAGES[$i]}" == "$image" ]]; then
+            echo "${DOCKERFILES[$i]}"
+            return 0
+        fi
+    done
+    return 1
+}
+
+get_tag() {
+    local image=$1
+    for i in "${!IMAGES[@]}"; do
+        if [[ "${IMAGES[$i]}" == "$image" ]]; then
+            echo "${TAGS[$i]}"
+            return 0
+        fi
+    done
+    return 1
+}
+
 if [ $# -eq 0 ]; then
   BUILD_LIST=("${IMAGES[@]}")
 else
@@ -26,8 +34,8 @@ else
 fi
 
 for IMAGE in "${BUILD_LIST[@]}"; do
-  DOCKERFILE=${DOCKERFILES[$IMAGE]}
-  TAG=${TAGS[$IMAGE]}
+  DOCKERFILE=$(get_dockerfile "$IMAGE")
+  TAG=$(get_tag "$IMAGE")
   if [ -z "$DOCKERFILE" ] || [ -z "$TAG" ]; then
     echo "Unknown image: $IMAGE. Valid options: scheduler, fetcher, optimizer, executor"
     exit 1
