@@ -6,6 +6,7 @@ from portfolio_rebalancer.common.interfaces import BrokerInterface
 from portfolio_rebalancer.common.config import get_config
 from .alpaca_broker import AlpacaBroker
 from .ib_broker import IBBroker
+from .t212_broker import T212Broker
 
 logger = logging.getLogger(__name__)
 
@@ -26,6 +27,8 @@ class BrokerFactory:
                 return AlpacaBroker()
             elif broker_type == "ib":
                 return IBBroker()
+            elif broker_type == "t212":
+                return T212Broker()
             else:
                 logger.error(f"Unsupported broker type: {broker_type}")
                 return None
