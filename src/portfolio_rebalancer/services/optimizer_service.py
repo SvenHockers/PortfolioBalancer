@@ -81,7 +81,7 @@ class OptimizerService:
             """Readiness check endpoint."""
             try:
                 # Check if we have sufficient historical data
-                tickers = self.config.tickers
+                tickers = self.config.data.tickers
                 lookback_days = self.config.optimizer.lookback_days
                 
                 # Try to get price data
@@ -168,9 +168,9 @@ class OptimizerService:
             
             # Run optimization
             result = self.optimizer.optimize_portfolio(
-                tickers=self.config.tickers,
-                user_age=self.config.optimizer.user_age,
-                lookback_days=self.config.optimizer.lookback_days
+                tickers=self.config.data.tickers,
+                user_age=self.config.optimization.user_age,
+                lookback_days=self.config.optimization.lookback_days
             )
             
             self.last_execution = datetime.now()

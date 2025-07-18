@@ -1,21 +1,16 @@
 """Data fetcher orchestrator that coordinates provider and storage."""
 
 import logging
-from datetime import date, datetime, timedelta
-from typing import List, Optional, Dict, Union, Type
+from datetime import date, timedelta
+from typing import List, Optional
 import pandas as pd
 
 from ..common.interfaces import DataProvider, DataStorage
 from ..common.config import Config, get_config
-from .storage import ParquetStorage, SQLiteStorage, StorageError
+from .storage import ParquetStorage, SQLiteStorage
 
 
 logger = logging.getLogger(__name__)
-
-
-class DataFetcherError(Exception):
-    """Custom exception for data fetcher errors."""
-    pass
 
 
 class DataFetcher:
@@ -56,6 +51,7 @@ class DataFetcher:
             elif storage_type == "sqlite":
                 self.storage = SQLiteStorage(db_path=f"{storage_path}/prices.db")
             else:
+                logger.error(f"Unsupported storage type: {storage_type}")
                 raise ValueError(f"Unsupported storage type: {storage_type}")
         else:
             self.storage = storage
@@ -71,13 +67,11 @@ class DataFetcher:
             
         Returns:
             DataFrame with fetched price data
-            
-        Raises:
-            DataFetcherError: If fetching or storing data fails
         """
         tickers = tickers or self.config.data.tickers
         if not tickers:
-            raise ValueError("No tickers specified")
+            logger.error("No tickers specified")
+            return pd.DataFrame()
         
         today = date.today()
         yesterday = today - timedelta(days=1)
@@ -100,7 +94,7 @@ class DataFetcher:
         except Exception as e:
             error_msg = f"Failed to fetch and store daily data: {e}"
             logger.error(error_msg)
-            raise DataFetcherError(error_msg) from e
+            return pd.DataFrame()
     
     def backfill_missing_data(
         self,
@@ -118,17 +112,16 @@ class DataFetcher:
             
         Returns:
             DataFrame with backfilled price data
-            
-        Raises:
-            DataFetcherError: If backfilling fails
         """
         tickers = tickers or self.config.data.tickers
         if not tickers:
-            raise ValueError("No tickers specified")
+            logger.error("No tickers specified")
+            return pd.DataFrame()
         
         days = days or self.config.data.backfill_days
         if days <= 0:
-            raise ValueError("Backfill days must be positive")
+            logger.error("Backfill days must be positive")
+            return pd.DataFrame()
         
         end_date = end_date or (date.today() - timedelta(days=1))
         start_date = end_date - timedelta(days=days)
@@ -152,7 +145,7 @@ class DataFetcher:
         except Exception as e:
             error_msg = f"Failed to backfill historical data: {e}"
             logger.error(error_msg)
-            raise DataFetcherError(error_msg) from e
+            return pd.DataFrame()
     
     def get_latest_prices(self, tickers: Optional[List[str]] = None) -> pd.DataFrame:
         """
@@ -163,13 +156,11 @@ class DataFetcher:
             
         Returns:
             DataFrame with latest price data
-            
-        Raises:
-            DataFetcherError: If retrieving data fails
         """
         tickers = tickers or self.config.data.tickers
         if not tickers:
-            raise ValueError("No tickers specified")
+            logger.error("No tickers specified")
+            return pd.DataFrame()
         
         try:
             # Get data for the last 5 days (to account for weekends/holidays)
@@ -210,7 +201,7 @@ class DataFetcher:
         except Exception as e:
             error_msg = f"Failed to get latest prices: {e}"
             logger.error(error_msg)
-            raise DataFetcherError(error_msg) from e
+            return pd.DataFrame()
     
     def get_historical_prices(
         self,
@@ -226,17 +217,16 @@ class DataFetcher:
             
         Returns:
             DataFrame with historical price data
-            
-        Raises:
-            DataFetcherError: If retrieving data fails
         """
         tickers = tickers or self.config.data.tickers
         if not tickers:
-            raise ValueError("No tickers specified")
+            logger.error("No tickers specified")
+            return pd.DataFrame()
         
         lookback_days = lookback_days or self.config.optimization.lookback_days
         if lookback_days <= 0:
-            raise ValueError("Lookback days must be positive")
+            logger.error("Lookback days must be positive")
+            return pd.DataFrame()
         
         try:
             # Get historical data from storage
@@ -252,7 +242,7 @@ class DataFetcher:
         except Exception as e:
             error_msg = f"Failed to get historical prices: {e}"
             logger.error(error_msg)
-            raise DataFetcherError(error_msg) from e
+            return pd.DataFrame()
     
     def ensure_data_available(
         self,
@@ -272,17 +262,16 @@ class DataFetcher:
             
         Returns:
             DataFrame with historical price data
-            
-        Raises:
-            DataFetcherError: If ensuring data availability fails
         """
         tickers = tickers or self.config.data.tickers
         if not tickers:
-            raise ValueError("No tickers specified")
+            logger.error("No tickers specified")
+            return pd.DataFrame()
         
         lookback_days = lookback_days or self.config.optimization.lookback_days
         if lookback_days <= 0:
-            raise ValueError("Lookback days must be positive")
+            logger.error("Lookback days must be positive")
+            return pd.DataFrame()
         
         try:
             # First, try to get data from storage
@@ -339,4 +328,4 @@ class DataFetcher:
         except Exception as e:
             error_msg = f"Failed to ensure data availability: {e}"
             logger.error(error_msg)
-            raise DataFetcherError(error_msg) from e
+            return pd.DataFrame()
