@@ -1,0 +1,64 @@
+FROM python:3.11-slim
+
+# Set build arguments
+ARG BUILD_DATE
+ARG VCS_REF
+ARG VERSION
+
+# Set labels for metadata
+LABEL org.label-schema.build-date=$BUILD_DATE \
+      org.label-schema.name="Portfolio Rebalancer Analytics Service" \
+      org.label-schema.description="Analytics service for portfolio performance analysis" \
+      org.label-schema.url="https://github.com/user/portfolio-rebalancer" \
+      org.label-schema.vcs-ref=$VCS_REF \
+      org.label-schema.vcs-url="https://github.com/user/portfolio-rebalancer" \
+      org.label-schema.vendor="Portfolio Rebalancer" \
+      org.label-schema.version=$VERSION \
+      org.label-schema.schema-version="1.0"
+
+# Set working directory
+WORKDIR /app
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    gcc \
+    g++ \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy requirements and install Python dependencies
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Install additional analytics dependencies
+RUN pip install --no-cache-dir \
+    psycopg2-binary \
+    sqlalchemy \
+    pandas \
+    numpy \
+    scipy \
+    scikit-learn
+
+# Copy source code
+COPY src/ ./src/
+COPY setup.py .
+
+# Install the package
+RUN pip install -e .
+
+# Create non-root user
+RUN groupadd -r analytics && useradd -r -g analytics analytics
+RUN chown -R analytics:analytics /app
+
+# Switch to non-root user
+USER analytics
+
+# Expose port
+EXPOSE 8084
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
+    CMD curl -f http://localhost:8084/health || exit 1
+
+# Run the analytics service
+CMD ["python", "-m", "src.portfolio_rebalancer.services.analytics_service", "--mode", "server", "--host", "0.0.0.0", "--port", "8084"]

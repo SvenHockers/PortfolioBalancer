@@ -204,6 +204,55 @@ services:
       retries: 3
       start_period: 40s
 
+  # Analytics service
+  analytics:
+    build:
+      context: .
+      dockerfile: dockerfiles/Dockerfile.analytics
+      args:
+        BUILD_DATE: ${BUILD_DATE:-}
+        VCS_REF: ${VCS_REF:-}
+        VERSION: ${VERSION:-latest}
+    image: ${ANALYTICS_IMAGE:-svenhockers/portfoliobalancer:analytics}
+    container_name: portfolio-analytics
+    ports:
+      - "8084:8084"
+    environment:
+      # Data Configuration
+      - TICKERS=${TICKERS:-SPY,QQQ,VTI,VXUS,BND}
+      - STORAGE_TYPE=${STORAGE_TYPE:-parquet}
+      - STORAGE_PATH=/app/data
+      
+      # Analytics Database Configuration
+      - ANALYTICS_DB_URL=${ANALYTICS_DB_URL:-postgresql://portfolio_user:portfolio_pass@postgres:5432/portfolio_rebalancer}
+      - POSTGRES_HOST=${POSTGRES_HOST:-postgres}
+      - POSTGRES_PORT=${POSTGRES_PORT:-5432}
+      - POSTGRES_DB=${POSTGRES_DB:-portfolio_rebalancer}
+      - POSTGRES_USER=${POSTGRES_USER:-portfolio_user}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-portfolio_pass}
+      
+      # Logging Configuration
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - LOG_FORMAT=${LOG_FORMAT:-json}
+      - LOG_FILE_PATH=/app/logs/analytics.log
+    volumes:
+      - portfolio_data:/app/data
+      - portfolio_logs:/app/logs
+    networks:
+      - portfolio-network
+    depends_on:
+      data-storage:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8084/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    profiles: ["analytics"]
+
   # Data storage initialization service
   data-storage:
     image: alpine:latest
