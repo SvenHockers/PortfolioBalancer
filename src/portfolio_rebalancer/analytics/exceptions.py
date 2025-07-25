@@ -629,6 +629,46 @@ class RateLimitError(AnalyticsError):
         super().__init__(message, **kwargs)
 
 
+class VisualizationError(AnalyticsError):
+    """Errors during visualization data generation."""
+    
+    def __init__(
+        self,
+        message: str,
+        chart_type: Optional[str] = None,
+        **kwargs
+    ):
+        context = kwargs.get('context', {})
+        if chart_type is not None:
+            context['chart_type'] = chart_type
+        
+        kwargs['context'] = context
+        kwargs.setdefault('category', ErrorCategory.COMPUTATION)
+        kwargs.setdefault('error_code', 'VISUALIZATION_ERROR')
+        kwargs.setdefault('severity', ErrorSeverity.MEDIUM)
+        super().__init__(message, **kwargs)
+
+
+class ExportError(AnalyticsError):
+    """Errors during data export operations."""
+    
+    def __init__(
+        self,
+        message: str,
+        export_format: Optional[str] = None,
+        **kwargs
+    ):
+        context = kwargs.get('context', {})
+        if export_format is not None:
+            context['export_format'] = export_format
+        
+        kwargs['context'] = context
+        kwargs.setdefault('category', ErrorCategory.COMPUTATION)
+        kwargs.setdefault('error_code', 'EXPORT_ERROR')
+        kwargs.setdefault('severity', ErrorSeverity.MEDIUM)
+        super().__init__(message, **kwargs)
+
+
 # Error mapping for converting generic exceptions to analytics exceptions
 ERROR_MAPPING = {
     ConnectionError: DatabaseConnectionError,

@@ -698,6 +698,21 @@ class AnalyticsServiceRunner:
         signal.signal(signal.SIGTERM, signal_handler)
         signal.signal(signal.SIGINT, signal_handler)
         
+        # Start WebSocket server in a separate thread
+        def run_websocket_server():
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            try:
+                loop.run_until_complete(self.websocket_server.start_server())
+                loop.run_forever()
+            except Exception as e:
+                self.logger.error(f"WebSocket server error: {e}")
+            finally:
+                loop.close()
+        
+        websocket_thread = threading.Thread(target=run_websocket_server, daemon=True)
+        websocket_thread.start()
+        
         # Start Flask server in a separate thread
         server_thread = threading.Thread(
             target=lambda: self.app.run(host=host, port=port, debug=False),
@@ -706,9 +721,20 @@ class AnalyticsServiceRunner:
         server_thread.start()
         
         self.logger.info(f"Analytics service started on {host}:{port}")
+        self.logger.info(f"WebSocket server started on {self.websocket_server.host}:{self.websocket_server.port}")
         
         # Wait for shutdown signal
         self.shutdown_event.wait()
+        
+        # Shutdown WebSocket server
+        try:
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            loop.run_until_complete(self.websocket_server.stop_server())
+            loop.close()
+        except Exception as e:
+            self.logger.error(f"Error stopping WebSocket server: {e}")
+        
         self.logger.info("Analytics service shutting down")
 
 
