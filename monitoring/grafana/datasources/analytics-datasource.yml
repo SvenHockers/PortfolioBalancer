@@ -1,0 +1,32 @@
+apiVersion: 1
+
+datasources:
+  - name: Portfolio Analytics API
+    type: prometheus
+    access: proxy
+    url: http://analytics-service:8084
+    isDefault: false
+    jsonData:
+      httpMethod: GET
+      keepCookies: []
+      timeInterval: 30s
+      queryTimeout: 60s
+      httpHeaderName1: Authorization
+    secureJsonData:
+      httpHeaderValue1: Bearer ${ANALYTICS_API_KEY}
+    version: 1
+    readOnly: false
+
+  - name: Portfolio Analytics JSON
+    type: simplejson
+    access: proxy
+    url: http://analytics-service:8084/api/v1/performance
+    isDefault: false
+    jsonData:
+      httpMethod: GET
+      keepCookies: []
+      httpHeaderName1: Authorization
+    secureJsonData:
+      httpHeaderValue1: Bearer ${ANALYTICS_API_KEY}
+    version: 1
+    readOnly: false

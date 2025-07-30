@@ -45,6 +45,7 @@ class AnalyticsService:
         self._monte_carlo_engine = None
         self._risk_analyzer = None
         self._performance_tracker = None
+        self._attribution_analyzer = None
         self._dividend_analyzer = None
         
         # Configure retry settings
@@ -90,6 +91,14 @@ class AnalyticsService:
             from .engines.performance import PerformanceTracker
             self._performance_tracker = PerformanceTracker(self.data_storage, self.analytics_storage)
         return self._performance_tracker
+    
+    @property
+    def attribution_analyzer(self):
+        """Lazy initialization of attribution analyzer."""
+        if self._attribution_analyzer is None:
+            from .engines.attribution import AttributionAnalyzer
+            self._attribution_analyzer = AttributionAnalyzer(self.data_storage, self.analytics_storage)
+        return self._attribution_analyzer
     
     @property
     def dividend_analyzer(self):
@@ -274,8 +283,17 @@ class AnalyticsService:
         try:
             logger.info(f"Tracking performance for portfolio {portfolio_id}")
             
+            # Create portfolio object
+            from ..common.models import Portfolio
+            portfolio = Portfolio(
+                id=portfolio_id,
+                tickers=tickers,
+                weights=weights,
+                target_allocation=dict(zip(tickers, weights))
+            )
+            
             # Track performance using the engine
-            metrics = self.performance_tracker.track_performance(portfolio_id, tickers, weights)
+            metrics = self.performance_tracker.track_performance(portfolio)
             
             # Store result
             self.analytics_storage.store_performance_metrics(metrics)
@@ -286,6 +304,109 @@ class AnalyticsService:
         except Exception as e:
             logger.error(f"Performance tracking failed: {e}")
             raise AnalyticsError(f"Performance tracking failed: {e}")
+    
+    def calculate_attribution(self, portfolio_id: str, tickers: List[str], weights: List[float],
+                            benchmark_tickers: List[str], benchmark_weights: List[float],
+                            start_date: date, end_date: date) -> Dict[str, Any]:
+        """
+        Calculate performance attribution analysis.
+        
+        Args:
+            portfolio_id: Portfolio identifier
+            tickers: Portfolio ticker symbols
+            weights: Portfolio weights
+            benchmark_tickers: Benchmark ticker symbols
+            benchmark_weights: Benchmark weights
+            start_date: Analysis start date
+            end_date: Analysis end date
+            
+        Returns:
+            Attribution analysis results
+            
+        Raises:
+            AnalyticsError: If attribution analysis fails
+        """
+        try:
+            logger.info(f"Calculating attribution for portfolio {portfolio_id}")
+            
+            # Create portfolio objects
+            from ..common.models import Portfolio
+            portfolio = Portfolio(
+                id=portfolio_id,
+                tickers=tickers,
+                weights=weights,
+                target_allocation=dict(zip(tickers, weights))
+            )
+            
+            benchmark_portfolio = Portfolio(
+                id=f"{portfolio_id}_benchmark",
+                tickers=benchmark_tickers,
+                weights=benchmark_weights,
+                target_allocation=dict(zip(benchmark_tickers, benchmark_weights))
+            )
+            
+            # Calculate attribution using the engine
+            attribution = self.attribution_analyzer.calculate_brinson_attribution(
+                portfolio, benchmark_portfolio, start_date, end_date
+            )
+            
+            logger.info(f"Attribution calculation completed for portfolio {portfolio_id}")
+            return attribution
+            
+        except Exception as e:
+            logger.error(f"Attribution calculation failed: {e}")
+            raise AnalyticsError(f"Attribution calculation failed: {e}")
+    
+    def calculate_multi_period_attribution(self, portfolio_id: str, tickers: List[str], weights: List[float],
+                                         benchmark_tickers: List[str], benchmark_weights: List[float],
+                                         periods: List[tuple]) -> Dict[str, Any]:
+        """
+        Calculate attribution analysis for multiple time periods.
+        
+        Args:
+            portfolio_id: Portfolio identifier
+            tickers: Portfolio ticker symbols
+            weights: Portfolio weights
+            benchmark_tickers: Benchmark ticker symbols
+            benchmark_weights: Benchmark weights
+            periods: List of (start_date, end_date) tuples
+            
+        Returns:
+            Multi-period attribution results
+            
+        Raises:
+            AnalyticsError: If attribution analysis fails
+        """
+        try:
+            logger.info(f"Calculating multi-period attribution for portfolio {portfolio_id}")
+            
+            # Create portfolio objects
+            from ..common.models import Portfolio
+            portfolio = Portfolio(
+                id=portfolio_id,
+                tickers=tickers,
+                weights=weights,
+                target_allocation=dict(zip(tickers, weights))
+            )
+            
+            benchmark_portfolio = Portfolio(
+                id=f"{portfolio_id}_benchmark",
+                tickers=benchmark_tickers,
+                weights=benchmark_weights,
+                target_allocation=dict(zip(benchmark_tickers, benchmark_weights))
+            )
+            
+            # Calculate multi-period attribution using the engine
+            attribution = self.attribution_analyzer.calculate_multi_period_attribution(
+                portfolio, benchmark_portfolio, periods
+            )
+            
+            logger.info(f"Multi-period attribution calculation completed for portfolio {portfolio_id}")
+            return attribution
+            
+        except Exception as e:
+            logger.error(f"Multi-period attribution calculation failed: {e}")
+            raise AnalyticsError(f"Multi-period attribution calculation failed: {e}")
     
     def analyze_dividends(self, portfolio_id: str, tickers: List[str], weights: List[float]) -> DividendAnalysis:
         """

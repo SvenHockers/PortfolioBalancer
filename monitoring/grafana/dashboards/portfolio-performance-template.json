@@ -1,0 +1,356 @@
+{
+  "dashboard": {
+    "id": null,
+    "title": "Portfolio Performance Analytics",
+    "tags": ["portfolio", "performance", "analytics"],
+    "timezone": "browser",
+    "panels": [
+      {
+        "id": 1,
+        "title": "Portfolio Performance Overview",
+        "type": "stat",
+        "targets": [
+          {
+            "expr": "portfolio_total_return{portfolio_id=\"$portfolio\"}",
+            "legendFormat": "Total Return",
+            "refId": "A"
+          },
+          {
+            "expr": "portfolio_annualized_return{portfolio_id=\"$portfolio\"}",
+            "legendFormat": "Annualized Return",
+            "refId": "B"
+          },
+          {
+            "expr": "portfolio_sharpe_ratio{portfolio_id=\"$portfolio\"}",
+            "legendFormat": "Sharpe Ratio",
+            "refId": "C"
+          },
+          {
+            "expr": "portfolio_volatility{portfolio_id=\"$portfolio\"}",
+            "legendFormat": "Volatility",
+            "refId": "D"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "percent",
+            "decimals": 2,
+            "thresholds": {
+              "steps": [
+                {"color": "red", "value": 0},
+                {"color": "yellow", "value": 0.05},
+                {"color": "green", "value": 0.10}
+              ]
+            }
+          }
+        },
+        "options": {
+          "reduceOptions": {
+            "values": false,
+            "calcs": ["lastNotNull"],
+            "fields": ""
+          },
+          "orientation": "horizontal",
+          "textMode": "value_and_name",
+          "colorMode": "background"
+        },
+        "gridPos": {"h": 4, "w": 24, "x": 0, "y": 0}
+      },
+      {
+        "id": 2,
+        "title": "Cumulative Returns vs Benchmark",
+        "type": "timeseries",
+        "targets": [
+          {
+            "expr": "portfolio_cumulative_return{portfolio_id=\"$portfolio\"}",
+            "legendFormat": "Portfolio",
+            "refId": "A"
+          },
+          {
+            "expr": "benchmark_cumulative_return{benchmark=\"$benchmark\"}",
+            "legendFormat": "Benchmark ($benchmark)",
+            "refId": "B"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "percent",
+            "custom": {
+              "drawStyle": "line",
+              "lineInterpolation": "linear",
+              "lineWidth": 2,
+              "fillOpacity": 10,
+              "gradientMode": "none",
+              "spanNulls": false,
+              "insertNulls": false,
+              "showPoints": "never",
+              "pointSize": 5,
+              "stacking": {"mode": "none", "group": "A"},
+              "axisPlacement": "auto",
+              "axisLabel": "",
+              "scaleDistribution": {"type": "linear"},
+              "hideFrom": {"legend": false, "tooltip": false, "vis": false},
+              "thresholdsStyle": {"mode": "off"}
+            }
+          }
+        },
+        "options": {
+          "tooltip": {"mode": "single", "sort": "none"},
+          "legend": {"displayMode": "visible", "placement": "bottom"}
+        },
+        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 4}
+      },
+      {
+        "id": 3,
+        "title": "Risk Metrics",
+        "type": "gauge",
+        "targets": [
+          {
+            "expr": "portfolio_beta{portfolio_id=\"$portfolio\"}",
+            "legendFormat": "Beta",
+            "refId": "A"
+          },
+          {
+            "expr": "portfolio_alpha{portfolio_id=\"$portfolio\"}",
+            "legendFormat": "Alpha",
+            "refId": "B"
+          },
+          {
+            "expr": "portfolio_tracking_error{portfolio_id=\"$portfolio\"}",
+            "legendFormat": "Tracking Error",
+            "refId": "C"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "min": -2,
+            "max": 2,
+            "thresholds": {
+              "steps": [
+                {"color": "green", "value": -2},
+                {"color": "yellow", "value": -0.5},
+                {"color": "red", "value": 0.5}
+              ]
+            }
+          }
+        },
+        "options": {
+          "reduceOptions": {
+            "values": false,
+            "calcs": ["lastNotNull"],
+            "fields": ""
+          },
+          "orientation": "auto",
+          "showThresholdLabels": false,
+          "showThresholdMarkers": true
+        },
+        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 4}
+      },
+      {
+        "id": 4,
+        "title": "Drawdown Analysis",
+        "type": "timeseries",
+        "targets": [
+          {
+            "expr": "portfolio_drawdown{portfolio_id=\"$portfolio\"}",
+            "legendFormat": "Drawdown",
+            "refId": "A"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "percent",
+            "custom": {
+              "drawStyle": "line",
+              "lineWidth": 2,
+              "fillOpacity": 30,
+              "gradientMode": "opacity"
+            },
+            "color": {"mode": "palette-classic"},
+            "thresholds": {
+              "steps": [
+                {"color": "green", "value": 0},
+                {"color": "yellow", "value": -0.05},
+                {"color": "red", "value": -0.10}
+              ]
+            }
+          }
+        },
+        "options": {
+          "tooltip": {"mode": "single", "sort": "none"},
+          "legend": {"displayMode": "visible", "placement": "bottom"}
+        },
+        "gridPos": {"h": 6, "w": 12, "x": 0, "y": 12}
+      },
+      {
+        "id": 5,
+        "title": "Rolling Sharpe Ratio (30-day)",
+        "type": "timeseries",
+        "targets": [
+          {
+            "expr": "portfolio_rolling_sharpe{portfolio_id=\"$portfolio\"}",
+            "legendFormat": "Rolling Sharpe",
+            "refId": "A"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "custom": {
+              "drawStyle": "line",
+              "lineWidth": 1,
+              "fillOpacity": 0
+            },
+            "thresholds": {
+              "steps": [
+                {"color": "red", "value": 0},
+                {"color": "yellow", "value": 0.5},
+                {"color": "green", "value": 1.0}
+              ]
+            }
+          }
+        },
+        "gridPos": {"h": 6, "w": 12, "x": 12, "y": 12}
+      },
+      {
+        "id": 6,
+        "title": "Performance Attribution",
+        "type": "barchart",
+        "targets": [
+          {
+            "expr": "portfolio_attribution_allocation{portfolio_id=\"$portfolio\"}",
+            "legendFormat": "Asset Allocation",
+            "refId": "A"
+          },
+          {
+            "expr": "portfolio_attribution_selection{portfolio_id=\"$portfolio\"}",
+            "legendFormat": "Security Selection",
+            "refId": "B"
+          },
+          {
+            "expr": "portfolio_attribution_interaction{portfolio_id=\"$portfolio\"}",
+            "legendFormat": "Interaction",
+            "refId": "C"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "percent",
+            "custom": {
+              "orientation": "horizontal",
+              "barWidth": 0.6,
+              "groupWidth": 0.7
+            }
+          }
+        },
+        "gridPos": {"h": 6, "w": 12, "x": 0, "y": 18}
+      },
+      {
+        "id": 7,
+        "title": "Benchmark Comparison Table",
+        "type": "table",
+        "targets": [
+          {
+            "expr": "portfolio_vs_benchmark_metrics{portfolio_id=\"$portfolio\"}",
+            "format": "table",
+            "refId": "A"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "custom": {
+              "align": "auto",
+              "displayMode": "auto"
+            }
+          },
+          "overrides": [
+            {
+              "matcher": {"id": "byName", "options": "Excess Return"},
+              "properties": [
+                {
+                  "id": "custom.displayMode",
+                  "value": "color-background"
+                },
+                {
+                  "id": "thresholds",
+                  "value": {
+                    "steps": [
+                      {"color": "red", "value": -0.05},
+                      {"color": "yellow", "value": 0},
+                      {"color": "green", "value": 0.02}
+                    ]
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        "options": {
+          "showHeader": true
+        },
+        "gridPos": {"h": 6, "w": 12, "x": 12, "y": 18}
+      }
+    ],
+    "time": {
+      "from": "now-1y",
+      "to": "now"
+    },
+    "timepicker": {
+      "refresh_intervals": ["5s", "10s", "30s", "1m", "5m", "15m", "30m", "1h", "2h", "1d"],
+      "time_options": ["5m", "15m", "1h", "6h", "12h", "24h", "2d", "7d", "30d"]
+    },
+    "templating": {
+      "list": [
+        {
+          "name": "portfolio",
+          "type": "query",
+          "query": "label_values(portfolio_total_return, portfolio_id)",
+          "current": {
+            "selected": false,
+            "text": "All",
+            "value": "$__all"
+          },
+          "hide": 0,
+          "includeAll": false,
+          "multi": false,
+          "options": [],
+          "refresh": 1,
+          "regex": "",
+          "skipUrlSync": false,
+          "sort": 0,
+          "tagValuesQuery": "",
+          "tagsQuery": "",
+          "type": "query",
+          "useTags": false
+        },
+        {
+          "name": "benchmark",
+          "type": "custom",
+          "options": [
+            {"text": "S&P 500 (SPY)", "value": "SPY", "selected": true},
+            {"text": "Total Market (VTI)", "value": "VTI"},
+            {"text": "NASDAQ 100 (QQQ)", "value": "QQQ"},
+            {"text": "Bonds (BND)", "value": "BND"}
+          ],
+          "current": {"text": "S&P 500 (SPY)", "value": "SPY"}
+        }
+      ]
+    },
+    "annotations": {
+      "list": [
+        {
+          "name": "Portfolio Rebalancing",
+          "datasource": "Portfolio Analytics API",
+          "enable": true,
+          "expr": "portfolio_rebalance_events{portfolio_id=\"$portfolio\"}",
+          "iconColor": "blue",
+          "textFormat": "Rebalanced"
+        }
+      ]
+    },
+    "refresh": "1m",
+    "schemaVersion": 30,
+    "version": 1,
+    "weekStart": ""
+  },
+  "overwrite": true
+}
