@@ -327,9 +327,10 @@ class DividendAnalyzer:
                       tickers: List[str],
                       weights: List[float],
                       years: int = 5,
-                      portfolio_value: float = 100000.0) -> Dict[str, Any]:
+                      portfolio_value: float = 100000.0,
+                      scenarios: Optional[List[str]] = None) -> Dict[str, Any]:
         """
-        Project future dividend income based on growth rates.
+        Project future dividend income with multiple scenarios and detailed analysis.
         
         Args:
             portfolio_id: Portfolio identifier
@@ -337,39 +338,97 @@ class DividendAnalyzer:
             weights: Portfolio weights
             years: Number of years to project
             portfolio_value: Current portfolio value
+            scenarios: List of scenarios to model ('conservative', 'base', 'optimistic')
             
         Returns:
-            Income projection results
+            Comprehensive income projection results
         """
         try:
             logger.info(f"Projecting income for {years} years for portfolio {portfolio_id}")
             
+            if scenarios is None:
+                scenarios = ['conservative', 'base', 'optimistic']
+            
             # Get current dividend analysis
             current_analysis = self.analyze_dividend_income(portfolio_id, tickers, weights, portfolio_value)
             current_income = current_analysis.projected_annual_income
-            growth_rate = current_analysis.dividend_growth_rate
+            base_growth_rate = current_analysis.dividend_growth_rate
             
-            projections = {}
-            cumulative_income = 0.0
-            
-            for year in range(1, years + 1):
-                projected_income = current_income * ((1 + growth_rate) ** year)
-                cumulative_income += projected_income
-                
-                projections[f"year_{year}"] = {
-                    'projected_income': projected_income,
-                    'growth_from_current': (projected_income / current_income) - 1 if current_income > 0 else 0,
-                    'cumulative_income': cumulative_income
+            # Define scenario parameters
+            scenario_params = {
+                'conservative': {
+                    'growth_multiplier': 0.5,  # 50% of base growth rate
+                    'volatility': 0.15,        # 15% volatility
+                    'recession_probability': 0.3  # 30% chance of recession impact
+                },
+                'base': {
+                    'growth_multiplier': 1.0,  # Base growth rate
+                    'volatility': 0.10,        # 10% volatility
+                    'recession_probability': 0.2  # 20% chance of recession impact
+                },
+                'optimistic': {
+                    'growth_multiplier': 1.5,  # 150% of base growth rate
+                    'volatility': 0.20,        # 20% volatility
+                    'recession_probability': 0.1  # 10% chance of recession impact
                 }
+            }
+            
+            scenario_projections = {}
+            
+            for scenario in scenarios:
+                params = scenario_params.get(scenario, scenario_params['base'])
+                scenario_growth_rate = base_growth_rate * params['growth_multiplier']
+                
+                projections = {}
+                cumulative_income = 0.0
+                
+                for year in range(1, years + 1):
+                    # Base projection with growth
+                    base_projected_income = current_income * ((1 + scenario_growth_rate) ** year)
+                    
+                    # Add volatility and recession risk
+                    volatility_factor = 1.0 + (np.random.normal(0, params['volatility']) if year > 1 else 0)
+                    recession_factor = 0.7 if (year > 2 and np.random.random() < params['recession_probability']) else 1.0
+                    
+                    projected_income = base_projected_income * volatility_factor * recession_factor
+                    projected_income = max(0, projected_income)  # Ensure non-negative
+                    
+                    cumulative_income += projected_income
+                    
+                    projections[f"year_{year}"] = {
+                        'projected_income': projected_income,
+                        'growth_from_current': (projected_income / current_income) - 1 if current_income > 0 else 0,
+                        'cumulative_income': cumulative_income,
+                        'volatility_factor': volatility_factor,
+                        'recession_factor': recession_factor
+                    }
+                
+                scenario_projections[scenario] = {
+                    'growth_rate': scenario_growth_rate,
+                    'projections': projections,
+                    'total_projected_income': cumulative_income,
+                    'final_year_income': projections[f"year_{years}"]['projected_income'] if years > 0 else current_income,
+                    'average_annual_income': cumulative_income / years if years > 0 else current_income
+                }
+            
+            # Calculate holding-level projections
+            holding_projections = self._project_holding_level_income(
+                tickers, weights, portfolio_value, years, base_growth_rate
+            )
+            
+            # Analyze seasonal patterns
+            seasonal_analysis = self._analyze_seasonal_patterns(tickers, weights)
             
             projection_result = {
                 'portfolio_id': portfolio_id,
                 'projection_years': years,
                 'current_annual_income': current_income,
-                'assumed_growth_rate': growth_rate,
-                'projections': projections,
-                'total_projected_income': cumulative_income,
-                'final_year_income': projections[f"year_{years}"]['projected_income'] if years > 0 else current_income
+                'base_growth_rate': base_growth_rate,
+                'scenario_projections': scenario_projections,
+                'holding_projections': holding_projections,
+                'seasonal_analysis': seasonal_analysis,
+                'projection_date': date.today().isoformat(),
+                'confidence_intervals': self._calculate_projection_confidence_intervals(scenario_projections)
             }
             
             return projection_result
@@ -377,6 +436,163 @@ class DividendAnalyzer:
         except Exception as e:
             logger.error(f"Income projection failed: {e}")
             raise AnalyticsError(f"Income projection failed: {e}")
+    
+    def _project_holding_level_income(self, 
+                                    tickers: List[str], 
+                                    weights: List[float], 
+                                    portfolio_value: float,
+                                    years: int,
+                                    base_growth_rate: float) -> Dict[str, Any]:
+        """
+        Project income at the individual holding level.
+        
+        Args:
+            tickers: List of ticker symbols
+            weights: Portfolio weights
+            portfolio_value: Total portfolio value
+            years: Number of years to project
+            base_growth_rate: Base growth rate assumption
+            
+        Returns:
+            Holding-level income projections
+        """
+        dividend_data = self._fetch_dividend_data(tickers)
+        holding_projections = {}
+        
+        for ticker, weight in zip(tickers, weights):
+            holding_value = portfolio_value * weight
+            holding_data = dividend_data.get(ticker, {})
+            
+            annual_dividend = holding_data.get('annual_dividend', 0.0)
+            current_price = holding_data.get('current_price', 1.0)
+            holding_growth_rate = holding_data.get('growth_rate', base_growth_rate)
+            
+            if current_price > 0:
+                shares = holding_value / current_price
+                current_annual_income = shares * annual_dividend
+                
+                yearly_projections = {}
+                for year in range(1, years + 1):
+                    projected_dividend = annual_dividend * ((1 + holding_growth_rate) ** year)
+                    projected_income = shares * projected_dividend
+                    
+                    yearly_projections[f"year_{year}"] = {
+                        'projected_dividend_per_share': projected_dividend,
+                        'projected_annual_income': projected_income
+                    }
+                
+                holding_projections[ticker] = {
+                    'current_shares': shares,
+                    'current_annual_income': current_annual_income,
+                    'growth_rate': holding_growth_rate,
+                    'yearly_projections': yearly_projections
+                }
+        
+        return holding_projections
+    
+    def _analyze_seasonal_patterns(self, tickers: List[str], weights: List[float]) -> Dict[str, Any]:
+        """
+        Analyze seasonal dividend payment patterns.
+        
+        Args:
+            tickers: List of ticker symbols
+            weights: Portfolio weights
+            
+        Returns:
+            Seasonal pattern analysis
+        """
+        try:
+            # Simplified seasonal analysis
+            # In a full implementation, this would analyze historical dividend payment dates
+            
+            quarterly_weight = 0.0
+            monthly_weight = 0.0
+            semi_annual_weight = 0.0
+            annual_weight = 0.0
+            
+            for ticker, weight in zip(tickers, weights):
+                # Most US stocks pay quarterly, bonds may pay monthly
+                if 'BND' in ticker or 'BOND' in ticker:
+                    monthly_weight += weight
+                else:
+                    quarterly_weight += weight
+            
+            # Estimate monthly income distribution
+            monthly_distribution = {}
+            for month in range(1, 13):
+                if month in [3, 6, 9, 12]:  # Typical dividend months
+                    monthly_distribution[f"month_{month}"] = quarterly_weight * 0.25
+                else:
+                    monthly_distribution[f"month_{month}"] = monthly_weight / 12
+            
+            return {
+                'payment_frequency_weights': {
+                    'quarterly': quarterly_weight,
+                    'monthly': monthly_weight,
+                    'semi_annual': semi_annual_weight,
+                    'annual': annual_weight
+                },
+                'monthly_income_distribution': monthly_distribution,
+                'peak_income_months': [3, 6, 9, 12],  # Typical dividend payment months
+                'estimated_quarterly_income': quarterly_weight * 0.25
+            }
+            
+        except Exception as e:
+            logger.warning(f"Seasonal pattern analysis failed: {e}")
+            return {}
+    
+    def _calculate_projection_confidence_intervals(self, scenario_projections: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Calculate confidence intervals for income projections.
+        
+        Args:
+            scenario_projections: Projections for different scenarios
+            
+        Returns:
+            Confidence interval data
+        """
+        try:
+            if not scenario_projections:
+                return {}
+            
+            # Extract final year incomes for each scenario
+            final_incomes = []
+            total_incomes = []
+            
+            for scenario, data in scenario_projections.items():
+                final_incomes.append(data['final_year_income'])
+                total_incomes.append(data['total_projected_income'])
+            
+            if not final_incomes:
+                return {}
+            
+            # Calculate percentiles
+            final_income_p10 = np.percentile(final_incomes, 10)
+            final_income_p50 = np.percentile(final_incomes, 50)
+            final_income_p90 = np.percentile(final_incomes, 90)
+            
+            total_income_p10 = np.percentile(total_incomes, 10)
+            total_income_p50 = np.percentile(total_incomes, 50)
+            total_income_p90 = np.percentile(total_incomes, 90)
+            
+            return {
+                'final_year_income': {
+                    'p10': final_income_p10,
+                    'p50': final_income_p50,
+                    'p90': final_income_p90,
+                    'range': final_income_p90 - final_income_p10
+                },
+                'total_projected_income': {
+                    'p10': total_income_p10,
+                    'p50': total_income_p50,
+                    'p90': total_income_p90,
+                    'range': total_income_p90 - total_income_p10
+                }
+            }
+            
+        except Exception as e:
+            logger.warning(f"Confidence interval calculation failed: {e}")
+            return {}
     
     def analyze_sustainability(self, 
                              portfolio_id: str,
@@ -490,6 +706,269 @@ class DividendAnalyzer:
         except Exception as e:
             logger.error(f"Sustainability analysis failed: {e}")
             raise AnalyticsError(f"Sustainability analysis failed: {e}")
+    
+    def analyze_dividend_coverage_ratios(self, 
+                                       tickers: List[str],
+                                       weights: List[float]) -> Dict[str, Any]:
+        """
+        Perform detailed dividend coverage ratio analysis.
+        
+        Args:
+            tickers: List of ticker symbols
+            weights: Portfolio weights
+            
+        Returns:
+            Detailed coverage ratio analysis
+        """
+        try:
+            logger.info("Analyzing dividend coverage ratios")
+            
+            dividend_data = self._fetch_dividend_data(tickers)
+            coverage_analysis = {}
+            
+            weighted_coverage = 0.0
+            weighted_payout = 0.0
+            coverage_distribution = {'excellent': 0, 'good': 0, 'fair': 0, 'poor': 0}
+            
+            for ticker, weight in zip(tickers, weights):
+                holding_data = dividend_data.get(ticker, {})
+                coverage_ratio = holding_data.get('coverage_ratio', 1.0)
+                payout_ratio = holding_data.get('payout_ratio', 0.0)
+                
+                weighted_coverage += coverage_ratio * weight
+                weighted_payout += payout_ratio * weight
+                
+                # Classify coverage quality
+                if coverage_ratio >= 2.0:
+                    coverage_quality = 'excellent'
+                elif coverage_ratio >= 1.5:
+                    coverage_quality = 'good'
+                elif coverage_ratio >= 1.2:
+                    coverage_quality = 'fair'
+                else:
+                    coverage_quality = 'poor'
+                
+                coverage_distribution[coverage_quality] += weight
+                
+                coverage_analysis[ticker] = {
+                    'coverage_ratio': coverage_ratio,
+                    'payout_ratio': payout_ratio,
+                    'coverage_quality': coverage_quality,
+                    'weight': weight,
+                    'sustainability_risk': 'high' if coverage_ratio < 1.2 else 'medium' if coverage_ratio < 1.5 else 'low'
+                }
+            
+            return {
+                'weighted_coverage_ratio': weighted_coverage,
+                'weighted_payout_ratio': weighted_payout,
+                'coverage_distribution': coverage_distribution,
+                'holding_analysis': coverage_analysis,
+                'portfolio_coverage_quality': self._assess_portfolio_coverage_quality(weighted_coverage),
+                'recommendations': self._generate_coverage_recommendations(coverage_analysis)
+            }
+            
+        except Exception as e:
+            logger.error(f"Coverage ratio analysis failed: {e}")
+            raise AnalyticsError(f"Coverage ratio analysis failed: {e}")
+    
+    def _assess_portfolio_coverage_quality(self, weighted_coverage: float) -> str:
+        """Assess overall portfolio coverage quality."""
+        if weighted_coverage >= 2.0:
+            return 'excellent'
+        elif weighted_coverage >= 1.5:
+            return 'good'
+        elif weighted_coverage >= 1.2:
+            return 'fair'
+        else:
+            return 'poor'
+    
+    def _generate_coverage_recommendations(self, coverage_analysis: Dict[str, Any]) -> List[str]:
+        """Generate recommendations based on coverage analysis."""
+        recommendations = []
+        
+        poor_coverage_holdings = [
+            ticker for ticker, data in coverage_analysis.items()
+            if data['coverage_ratio'] < 1.2
+        ]
+        
+        high_payout_holdings = [
+            ticker for ticker, data in coverage_analysis.items()
+            if data['payout_ratio'] > 0.8
+        ]
+        
+        if poor_coverage_holdings:
+            recommendations.append(
+                f"Consider reducing exposure to holdings with poor coverage ratios: {', '.join(poor_coverage_holdings[:3])}"
+            )
+        
+        if high_payout_holdings:
+            recommendations.append(
+                f"Monitor holdings with high payout ratios (>80%): {', '.join(high_payout_holdings[:3])}"
+            )
+        
+        if not recommendations:
+            recommendations.append("Portfolio dividend coverage appears healthy")
+        
+        return recommendations
+    
+    def analyze_income_optimization_opportunities(self, 
+                                                portfolio_id: str,
+                                                tickers: List[str],
+                                                weights: List[float],
+                                                target_yield: float = 0.04,
+                                                risk_tolerance: str = 'moderate') -> Dict[str, Any]:
+        """
+        Analyze opportunities to optimize income while maintaining risk targets.
+        
+        Args:
+            portfolio_id: Portfolio identifier
+            tickers: List of ticker symbols
+            weights: Portfolio weights
+            target_yield: Target dividend yield
+            risk_tolerance: Risk tolerance level ('conservative', 'moderate', 'aggressive')
+            
+        Returns:
+            Income optimization analysis and suggestions
+        """
+        try:
+            logger.info(f"Analyzing income optimization opportunities for {portfolio_id}")
+            
+            current_analysis = self.analyze_dividend_income(portfolio_id, tickers, weights)
+            current_yield = current_analysis.current_yield
+            
+            # Define risk parameters
+            risk_params = {
+                'conservative': {'max_payout_ratio': 0.6, 'min_coverage_ratio': 2.0, 'max_concentration': 0.1},
+                'moderate': {'max_payout_ratio': 0.75, 'min_coverage_ratio': 1.5, 'max_concentration': 0.15},
+                'aggressive': {'max_payout_ratio': 0.9, 'min_coverage_ratio': 1.2, 'max_concentration': 0.25}
+            }
+            
+            params = risk_params.get(risk_tolerance, risk_params['moderate'])
+            
+            # Analyze current holdings
+            dividend_data = self._fetch_dividend_data(tickers)
+            holding_analysis = []
+            
+            for ticker, weight in zip(tickers, weights):
+                holding_data = dividend_data.get(ticker, {})
+                yield_contribution = holding_data.get('dividend_yield', 0.0) * weight
+                
+                holding_analysis.append({
+                    'ticker': ticker,
+                    'weight': weight,
+                    'dividend_yield': holding_data.get('dividend_yield', 0.0),
+                    'yield_contribution': yield_contribution,
+                    'payout_ratio': holding_data.get('payout_ratio', 0.0),
+                    'coverage_ratio': holding_data.get('coverage_ratio', 1.0),
+                    'meets_risk_criteria': (
+                        holding_data.get('payout_ratio', 0.0) <= params['max_payout_ratio'] and
+                        holding_data.get('coverage_ratio', 1.0) >= params['min_coverage_ratio']
+                    )
+                })
+            
+            # Identify optimization opportunities
+            yield_gap = target_yield - current_yield
+            
+            optimization_suggestions = []
+            
+            if yield_gap > 0:
+                # Need to increase yield
+                high_yield_candidates = [
+                    h for h in holding_analysis 
+                    if h['dividend_yield'] > target_yield and h['meets_risk_criteria']
+                ]
+                
+                if high_yield_candidates:
+                    best_candidate = max(high_yield_candidates, key=lambda x: x['dividend_yield'])
+                    optimization_suggestions.append({
+                        'action': 'increase_allocation',
+                        'ticker': best_candidate['ticker'],
+                        'current_weight': best_candidate['weight'],
+                        'suggested_weight': min(best_candidate['weight'] + 0.05, params['max_concentration']),
+                        'expected_yield_improvement': best_candidate['dividend_yield'] * 0.05,
+                        'rationale': f"High yield ({best_candidate['dividend_yield']:.2%}) with acceptable risk metrics"
+                    })
+                
+                # Identify low-yield holdings to reduce
+                low_yield_holdings = [
+                    h for h in holding_analysis 
+                    if h['dividend_yield'] < current_yield * 0.5 and h['weight'] > 0.05
+                ]
+                
+                for holding in low_yield_holdings[:2]:  # Top 2 candidates
+                    optimization_suggestions.append({
+                        'action': 'reduce_allocation',
+                        'ticker': holding['ticker'],
+                        'current_weight': holding['weight'],
+                        'suggested_weight': max(holding['weight'] - 0.03, 0.02),
+                        'yield_drag': holding['yield_contribution'],
+                        'rationale': f"Low yield ({holding['dividend_yield']:.2%}) dragging down portfolio income"
+                    })
+            
+            elif yield_gap < -0.01:  # Current yield significantly above target
+                optimization_suggestions.append({
+                    'action': 'maintain_current',
+                    'rationale': f"Current yield ({current_yield:.2%}) exceeds target ({target_yield:.2%})"
+                })
+            
+            return {
+                'portfolio_id': portfolio_id,
+                'current_yield': current_yield,
+                'target_yield': target_yield,
+                'yield_gap': yield_gap,
+                'risk_tolerance': risk_tolerance,
+                'risk_parameters': params,
+                'holding_analysis': holding_analysis,
+                'optimization_suggestions': optimization_suggestions,
+                'expected_yield_after_optimization': self._estimate_optimized_yield(
+                    holding_analysis, optimization_suggestions
+                )
+            }
+            
+        except Exception as e:
+            logger.error(f"Income optimization analysis failed: {e}")
+            raise AnalyticsError(f"Income optimization analysis failed: {e}")
+    
+    def _estimate_optimized_yield(self, 
+                                holding_analysis: List[Dict[str, Any]], 
+                                suggestions: List[Dict[str, Any]]) -> float:
+        """
+        Estimate portfolio yield after applying optimization suggestions.
+        
+        Args:
+            holding_analysis: Current holding analysis
+            suggestions: Optimization suggestions
+            
+        Returns:
+            Estimated optimized yield
+        """
+        try:
+            # Create a copy of current weights
+            optimized_weights = {h['ticker']: h['weight'] for h in holding_analysis}
+            
+            # Apply suggestions
+            for suggestion in suggestions:
+                if suggestion['action'] in ['increase_allocation', 'reduce_allocation']:
+                    ticker = suggestion['ticker']
+                    optimized_weights[ticker] = suggestion['suggested_weight']
+            
+            # Normalize weights to sum to 1
+            total_weight = sum(optimized_weights.values())
+            if total_weight > 0:
+                optimized_weights = {k: v/total_weight for k, v in optimized_weights.items()}
+            
+            # Calculate optimized yield
+            optimized_yield = 0.0
+            for holding in holding_analysis:
+                ticker = holding['ticker']
+                new_weight = optimized_weights.get(ticker, holding['weight'])
+                optimized_yield += holding['dividend_yield'] * new_weight
+            
+            return optimized_yield
+            
+        except Exception as e:
+            logger.warning(f"Could not estimate optimized yield: {e}")
+            return 0.0
     
     def get_top_dividend_contributors(self, 
                                     tickers: List[str],
