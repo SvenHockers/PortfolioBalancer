@@ -30,7 +30,9 @@ requests>=2.28.0
 
 # Monitoring and web
 prometheus-client>=0.16.0
+fastapi>=0.116.1
 flask>=2.3.0
+httpx>=0.24.0
 
 # Async processing and WebSockets
 celery>=5.3.0
