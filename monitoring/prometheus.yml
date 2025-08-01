@@ -2,6 +2,15 @@ global:
   scrape_interval: 15s
   evaluation_interval: 15s
 
+rule_files:
+  - "alert_rules.yml"
+
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets:
+          - alertmanager:9093
+
 scrape_configs:
   - job_name: 'portfolio_rebalancer'
     static_configs:
@@ -10,3 +19,44 @@ scrape_configs:
     scrape_timeout: 10s
     honor_labels: true
     scheme: http
+
+  - job_name: 'portfolio_analytics'
+    static_configs:
+      - targets: ['127.0.0.11:8084']
+    metrics_path: /metrics
+    scrape_timeout: 10s
+    honor_labels: true
+    scheme: http
+    scrape_interval: 30s
+    params:
+      format: ['prometheus']
+
+  - job_name: 'portfolio_analytics_health'
+    static_configs:
+      - targets: ['127.0.0.11:8084']
+    metrics_path: /health
+    scrape_timeout: 10s
+    honor_labels: true
+    scheme: http
+    scrape_interval: 60s
+
+  # Kubernetes service discovery for analytics in K8s environment
+  - job_name: 'kubernetes-analytics'
+    kubernetes_sd_configs:
+      - role: endpoints
+        namespaces:
+          names:
+            - portfolio-rebalancer
+    relabel_configs:
+      - source_labels: [__meta_kubernetes_service_name]
+        action: keep
+        regex: portfolio-analytics-service
+      - source_labels: [__meta_kubernetes_endpoint_port_name]
+        action: keep
+        regex: metrics
+      - source_labels: [__meta_kubernetes_namespace]
+        target_label: kubernetes_namespace
+      - source_labels: [__meta_kubernetes_service_name]
+        target_label: kubernetes_name
+      - source_labels: [__meta_kubernetes_pod_name]
+        target_label: kubernetes_pod_name

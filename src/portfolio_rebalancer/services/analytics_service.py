@@ -69,6 +69,7 @@ class AnalyticsServiceRunner:
         # Service state
         self.is_healthy = True
         self.last_execution = None
+        self.start_time = datetime.now()
         self.shutdown_event = threading.Event()
         
     def _get_analytics_db_url(self) -> str:
@@ -681,14 +682,74 @@ class AnalyticsServiceRunner:
                     'service': 'analytics',
                     'error': str(e)
                 }), 500
+        
+        @self.app.route('/metrics')
+        def metrics():
+            """Prometheus metrics endpoint."""
+            try:
+                # Import prometheus_client here to avoid import errors if not available
+                from prometheus_client import generate_latest, CONTENT_TYPE_LATEST
+                
+                # Generate metrics in Prometheus format
+                metrics_data = generate_latest()
+                
+                # Create response with proper content type
+                from flask import Response
+                return Response(metrics_data, mimetype=CONTENT_TYPE_LATEST)
+                
+            except ImportError:
+                # Prometheus client not available, return basic metrics in text format
+                basic_metrics = self._get_basic_metrics()
+                return Response(basic_metrics, mimetype='text/plain')
+            except Exception as e:
+                self.logger.error(f"Failed to generate metrics: {str(e)}")
+                return jsonify({
+                    'status': 'error',
+                    'service': 'analytics',
+                    'error': 'Metrics generation failed'
+                }), 500
     
-    def run_server(self, host: str = "0.0.0.0", port: int = 8084):
+    def _get_basic_metrics(self) -> str:
+        """Get basic metrics in Prometheus format when prometheus_client is not available."""
+        try:
+            # Get basic service metrics
+            health_status = self.analytics_service.health_check()
+            cache_stats = self.cache.get_cache_stats() if hasattr(self.cache, 'get_cache_stats') else {}
+            
+            metrics_lines = [
+                "# HELP analytics_service_health_status Analytics service health status (1=healthy, 0=unhealthy)",
+                "# TYPE analytics_service_health_status gauge",
+                f"analytics_service_health_status {1 if health_status.get('status') == 'healthy' else 0}",
+                "",
+                "# HELP analytics_cache_hit_rate Cache hit rate",
+                "# TYPE analytics_cache_hit_rate gauge",
+                f"analytics_cache_hit_rate {cache_stats.get('hit_rate', 0.0)}",
+                "",
+                "# HELP analytics_cache_size Current cache size",
+                "# TYPE analytics_cache_size gauge",
+                f"analytics_cache_size {cache_stats.get('size', 0)}",
+                "",
+                "# HELP analytics_uptime_seconds Service uptime in seconds",
+                "# TYPE analytics_uptime_seconds counter",
+                f"analytics_uptime_seconds {(datetime.now() - self.start_time).total_seconds() if hasattr(self, 'start_time') else 0}",
+                ""
+            ]
+            
+            return "\n".join(metrics_lines)
+            
+        except Exception as e:
+            self.logger.error(f"Failed to generate basic metrics: {str(e)}")
+            return "# Error generating metrics\n"
+    
+    def run_server(self, host: str = "0.0.0.0", port: int = 8084, ssl_cert: str = None, ssl_key: str = None):
         """
         Run the service with API server.
         
         Args:
             host: Host to bind to
             port: Port to bind to
+            ssl_cert: Path to SSL certificate file
+            ssl_key: Path to SSL private key file
         """
         def signal_handler(signum, frame):
             self.logger.info(f"Received signal {signum}, shutting down...")
@@ -697,6 +758,44 @@ class AnalyticsServiceRunner:
         # Setup signal handlers
         signal.signal(signal.SIGTERM, signal_handler)
         signal.signal(signal.SIGINT, signal_handler)
+        
+        # Check for SSL configuration
+        enable_ssl = os.getenv('ENABLE_SSL', 'false').lower() == 'true'
+        ssl_cert = ssl_cert or os.getenv('SSL_CERT_PATH')
+        ssl_key = ssl_key or os.getenv('SSL_KEY_PATH')
+        
+        if enable_ssl and ssl_cert and ssl_key:
+            if os.path.exists(ssl_cert) and os.path.exists(ssl_key):
+                self.logger.info(f"SSL enabled with cert: {ssl_cert}")
+                ssl_context = (ssl_cert, ssl_key)
+            else:
+                self.logger.warning("SSL enabled but certificate files not found, falling back to HTTP")
+                ssl_context = None
+                enable_ssl = False
+        else:
+            ssl_context = None
+            enable_ssl = False
+        
+        # Configure Flask app for production
+        self.app.config.update(
+            SECRET_KEY=os.getenv('ANALYTICS_JWT_SECRET', 'dev-secret-change-in-production'),
+            SESSION_COOKIE_SECURE=enable_ssl,
+            SESSION_COOKIE_HTTPONLY=True,
+            SESSION_COOKIE_SAMESITE='Lax',
+            PERMANENT_SESSION_LIFETIME=3600,  # 1 hour
+            MAX_CONTENT_LENGTH=int(os.getenv('ANALYTICS_MAX_REQUEST_SIZE', '10485760')),  # 10MB
+        )
+        
+        # Add security headers
+        @self.app.after_request
+        def add_security_headers(response):
+            response.headers['X-Content-Type-Options'] = 'nosniff'
+            response.headers['X-Frame-Options'] = 'DENY'
+            response.headers['X-XSS-Protection'] = '1; mode=block'
+            if enable_ssl:
+                response.headers['Strict-Transport-Security'] = 'max-age=31536000; includeSubDomains'
+            response.headers['Content-Security-Policy'] = "default-src 'self'"
+            return response
         
         # Start WebSocket server in a separate thread
         def run_websocket_server():
@@ -714,10 +813,16 @@ class AnalyticsServiceRunner:
         websocket_thread.start()
         
         # Start Flask server in a separate thread
-        server_thread = threading.Thread(
-            target=lambda: self.app.run(host=host, port=port, debug=False),
-            daemon=True
-        )
+        def run_flask_server():
+            try:
+                if ssl_context:
+                    self.app.run(host=host, port=port, debug=False, ssl_context=ssl_context)
+                else:
+                    self.app.run(host=host, port=port, debug=False)
+            except Exception as e:
+                self.logger.error(f"Flask server error: {e}")
+        
+        server_thread = threading.Thread(target=run_flask_server, daemon=True)
         server_thread.start()
         
         self.logger.info(f"Analytics service started on {host}:{port}")
@@ -747,12 +852,19 @@ def main():
                        help="Run mode: 'server' for API server")
     parser.add_argument("--host", default="0.0.0.0", help="Host for API server")
     parser.add_argument("--port", type=int, default=8084, help="Port for API server")
+    parser.add_argument("--ssl-cert", help="Path to SSL certificate file")
+    parser.add_argument("--ssl-key", help="Path to SSL private key file")
     
     args = parser.parse_args()
     
     try:
         service = AnalyticsServiceRunner()
-        service.run_server(host=args.host, port=args.port)
+        service.run_server(
+            host=args.host, 
+            port=args.port,
+            ssl_cert=getattr(args, 'ssl_cert', None),
+            ssl_key=getattr(args, 'ssl_key', None)
+        )
             
     except Exception as e:
         logging.error(f"Analytics service failed to start: {str(e)}", exc_info=True)

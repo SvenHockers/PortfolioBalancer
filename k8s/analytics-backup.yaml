@@ -1,0 +1,360 @@
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: analytics-db-backup
+  namespace: portfolio-rebalancer
+  labels:
+    app: portfolio-rebalancer
+    component: analytics-backup
+spec:
+  schedule: "0 2 * * *"  # Daily at 2 AM
+  jobTemplate:
+    spec:
+      template:
+        metadata:
+          labels:
+            app: portfolio-rebalancer
+            component: analytics-backup
+        spec:
+          restartPolicy: OnFailure
+          containers:
+          - name: postgres-backup
+            image: postgres:15-alpine
+            command:
+            - /bin/bash
+            - -c
+            - |
+              set -e
+              BACKUP_FILE="/backup/analytics-backup-$(date +%Y%m%d-%H%M%S).sql"
+              echo "Starting backup to $BACKUP_FILE"
+              
+              # Create backup
+              pg_dump -h $POSTGRES_HOST -U $POSTGRES_USER -d $POSTGRES_DB > $BACKUP_FILE
+              
+              # Compress backup
+              gzip $BACKUP_FILE
+              
+              # Verify backup
+              if [ -f "${BACKUP_FILE}.gz" ]; then
+                echo "Backup completed successfully: ${BACKUP_FILE}.gz"
+                echo "Backup size: $(du -h ${BACKUP_FILE}.gz | cut -f1)"
+              else
+                echo "Backup failed!"
+                exit 1
+              fi
+              
+              # Clean up old backups (keep last 30 days)
+              find /backup -name "analytics-backup-*.sql.gz" -mtime +30 -delete
+              
+              echo "Backup process completed"
+            env:
+            - name: POSTGRES_HOST
+              value: "postgres-service"
+            - name: POSTGRES_USER
+              valueFrom:
+                secretKeyRef:
+                  name: analytics-db-credentials
+                  key: POSTGRES_USER
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: analytics-db-credentials
+                  key: POSTGRES_PASSWORD
+            - name: POSTGRES_DB
+              valueFrom:
+                secretKeyRef:
+                  name: analytics-db-credentials
+                  key: POSTGRES_DB
+            - name: PGPASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: analytics-db-credentials
+                  key: POSTGRES_PASSWORD
+            volumeMounts:
+            - name: backup-storage
+              mountPath: /backup
+            resources:
+              requests:
+                memory: "256Mi"
+                cpu: "100m"
+              limits:
+                memory: "512Mi"
+                cpu: "500m"
+          volumes:
+          - name: backup-storage
+            persistentVolumeClaim:
+              claimName: analytics-backup-pvc
+
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: analytics-backup-pvc
+  namespace: portfolio-rebalancer
+  labels:
+    app: portfolio-rebalancer
+    component: analytics-backup
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 50Gi
+  storageClassName: standard
+
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: analytics-cache-backup
+  namespace: portfolio-rebalancer
+  labels:
+    app: portfolio-rebalancer
+    component: analytics-cache-backup
+spec:
+  schedule: "0 3 * * *"  # Daily at 3 AM
+  jobTemplate:
+    spec:
+      template:
+        metadata:
+          labels:
+            app: portfolio-rebalancer
+            component: analytics-cache-backup
+        spec:
+          restartPolicy: OnFailure
+          containers:
+          - name: redis-backup
+            image: redis:7-alpine
+            command:
+            - /bin/sh
+            - -c
+            - |
+              set -e
+              BACKUP_FILE="/backup/analytics-cache-backup-$(date +%Y%m%d-%H%M%S).rdb"
+              echo "Starting Redis cache backup to $BACKUP_FILE"
+              
+              # Create Redis backup
+              redis-cli -h $REDIS_HOST -p $REDIS_PORT --rdb $BACKUP_FILE
+              
+              # Compress backup
+              gzip $BACKUP_FILE
+              
+              # Verify backup
+              if [ -f "${BACKUP_FILE}.gz" ]; then
+                echo "Cache backup completed successfully: ${BACKUP_FILE}.gz"
+                echo "Backup size: $(du -h ${BACKUP_FILE}.gz | cut -f1)"
+              else
+                echo "Cache backup failed!"
+                exit 1
+              fi
+              
+              # Clean up old backups (keep last 7 days for cache)
+              find /backup -name "analytics-cache-backup-*.rdb.gz" -mtime +7 -delete
+              
+              echo "Cache backup process completed"
+            env:
+            - name: REDIS_HOST
+              value: "redis-service"
+            - name: REDIS_PORT
+              value: "6379"
+            volumeMounts:
+            - name: backup-storage
+              mountPath: /backup
+            resources:
+              requests:
+                memory: "128Mi"
+                cpu: "50m"
+              limits:
+                memory: "256Mi"
+                cpu: "200m"
+          volumes:
+          - name: backup-storage
+            persistentVolumeClaim:
+              claimName: analytics-backup-pvc
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: analytics-disaster-recovery
+  namespace: portfolio-rebalancer
+  labels:
+    app: portfolio-rebalancer
+    component: analytics-dr
+data:
+  restore-db.sh: |
+    #!/bin/bash
+    set -e
+    
+    if [ -z "$1" ]; then
+      echo "Usage: $0 <backup-file>"
+      echo "Available backups:"
+      ls -la /backup/analytics-backup-*.sql.gz
+      exit 1
+    fi
+    
+    BACKUP_FILE="$1"
+    
+    if [ ! -f "$BACKUP_FILE" ]; then
+      echo "Backup file not found: $BACKUP_FILE"
+      exit 1
+    fi
+    
+    echo "Restoring from backup: $BACKUP_FILE"
+    
+    # Decompress if needed
+    if [[ "$BACKUP_FILE" == *.gz ]]; then
+      gunzip -c "$BACKUP_FILE" | psql -h $POSTGRES_HOST -U $POSTGRES_USER -d $POSTGRES_DB
+    else
+      psql -h $POSTGRES_HOST -U $POSTGRES_USER -d $POSTGRES_DB < "$BACKUP_FILE"
+    fi
+    
+    echo "Database restore completed successfully"
+  
+  restore-cache.sh: |
+    #!/bin/bash
+    set -e
+    
+    if [ -z "$1" ]; then
+      echo "Usage: $0 <backup-file>"
+      echo "Available cache backups:"
+      ls -la /backup/analytics-cache-backup-*.rdb.gz
+      exit 1
+    fi
+    
+    BACKUP_FILE="$1"
+    
+    if [ ! -f "$BACKUP_FILE" ]; then
+      echo "Cache backup file not found: $BACKUP_FILE"
+      exit 1
+    fi
+    
+    echo "Restoring cache from backup: $BACKUP_FILE"
+    
+    # Stop Redis temporarily for restore
+    redis-cli -h $REDIS_HOST -p $REDIS_PORT SHUTDOWN NOSAVE || true
+    sleep 5
+    
+    # Decompress and restore
+    if [[ "$BACKUP_FILE" == *.gz ]]; then
+      gunzip -c "$BACKUP_FILE" > /tmp/dump.rdb
+    else
+      cp "$BACKUP_FILE" /tmp/dump.rdb
+    fi
+    
+    # Copy to Redis data directory (this would need to be adjusted based on Redis setup)
+    echo "Cache restore process initiated. Manual intervention may be required."
+    echo "Backup file prepared at: /tmp/dump.rdb"
+  
+  health-check.sh: |
+    #!/bin/bash
+    set -e
+    
+    echo "Performing analytics service health check..."
+    
+    # Check database connectivity
+    echo "Checking database connectivity..."
+    pg_isready -h $POSTGRES_HOST -p $POSTGRES_PORT -U $POSTGRES_USER
+    
+    # Check Redis connectivity
+    echo "Checking Redis connectivity..."
+    redis-cli -h $REDIS_HOST -p $REDIS_PORT ping
+    
+    # Check analytics service
+    echo "Checking analytics service..."
+    curl -f http://analytics-service:8084/health
+    
+    echo "All health checks passed!"
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: analytics-dr-service
+  namespace: portfolio-rebalancer
+  labels:
+    app: portfolio-rebalancer
+    component: analytics-dr
+spec:
+  selector:
+    app: portfolio-rebalancer
+    component: analytics-dr
+  ports:
+  - name: http
+    port: 8080
+    targetPort: 8080
+  type: ClusterIP
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: analytics-dr-tools
+  namespace: portfolio-rebalancer
+  labels:
+    app: portfolio-rebalancer
+    component: analytics-dr
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: portfolio-rebalancer
+      component: analytics-dr
+  template:
+    metadata:
+      labels:
+        app: portfolio-rebalancer
+        component: analytics-dr
+    spec:
+      containers:
+      - name: dr-tools
+        image: postgres:15-alpine
+        command: ["sleep", "infinity"]
+        env:
+        - name: POSTGRES_HOST
+          value: "postgres-service"
+        - name: POSTGRES_USER
+          valueFrom:
+            secretKeyRef:
+              name: analytics-db-credentials
+              key: POSTGRES_USER
+        - name: POSTGRES_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: analytics-db-credentials
+              key: POSTGRES_PASSWORD
+        - name: POSTGRES_DB
+          valueFrom:
+            secretKeyRef:
+              name: analytics-db-credentials
+              key: POSTGRES_DB
+        - name: PGPASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: analytics-db-credentials
+              key: POSTGRES_PASSWORD
+        - name: REDIS_HOST
+          value: "redis-service"
+        - name: REDIS_PORT
+          value: "6379"
+        volumeMounts:
+        - name: backup-storage
+          mountPath: /backup
+        - name: dr-scripts
+          mountPath: /scripts
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "50m"
+          limits:
+            memory: "256Mi"
+            cpu: "200m"
+      volumes:
+      - name: backup-storage
+        persistentVolumeClaim:
+          claimName: analytics-backup-pvc
+      - name: dr-scripts
+        configMap:
+          name: analytics-disaster-recovery
+          defaultMode: 0755

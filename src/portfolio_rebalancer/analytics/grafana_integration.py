@@ -35,6 +35,31 @@ class GrafanaDashboardProvisioner:
         Returns:
             Dashboard configuration
         """
+        # Load the comprehensive dashboard template
+        dashboard_path = Path(__file__).parent.parent.parent.parent / "monitoring" / "grafana" / "dashboards" / "portfolio-performance-comprehensive.json"
+        
+        try:
+            with open(dashboard_path, 'r') as f:
+                dashboard_config = json.load(f)
+            
+            # Customize for specific portfolio
+            dashboard_config["dashboard"]["title"] = f"Portfolio Performance - {portfolio_id}"
+            
+            # Update template variables
+            for template in dashboard_config["dashboard"]["templating"]["list"]:
+                if template["name"] == "portfolio":
+                    template["options"] = [{"text": portfolio_id, "value": portfolio_id, "selected": True}]
+                    template["current"] = {"text": portfolio_id, "value": portfolio_id}
+            
+            return dashboard_config
+            
+        except FileNotFoundError:
+            logger.warning(f"Dashboard template not found, creating basic dashboard")
+            # Fallback to basic dashboard
+            return self._create_basic_performance_dashboard(portfolio_id)
+    
+    def _create_basic_performance_dashboard(self, portfolio_id: str) -> Dict[str, Any]:
+        """Create basic performance dashboard as fallback."""
         dashboard = {
             "dashboard": {
                 "id": None,
@@ -604,6 +629,169 @@ class GrafanaDashboardProvisioner:
         ]
         
         return alert_rules
+    
+    def create_risk_analytics_dashboard(self, portfolio_id: str) -> Dict[str, Any]:
+        """
+        Create a comprehensive risk analytics dashboard.
+        
+        Args:
+            portfolio_id: Portfolio identifier
+            
+        Returns:
+            Dashboard configuration
+        """
+        dashboard_path = Path(__file__).parent.parent.parent.parent / "monitoring" / "grafana" / "dashboards" / "risk-analytics-dashboard.json"
+        
+        try:
+            with open(dashboard_path, 'r') as f:
+                dashboard_config = json.load(f)
+            
+            # Customize for specific portfolio
+            dashboard_config["dashboard"]["title"] = f"Risk Analytics - {portfolio_id}"
+            
+            # Update template variables
+            for template in dashboard_config["dashboard"]["templating"]["list"]:
+                if template["name"] == "portfolio":
+                    template["options"] = [{"text": portfolio_id, "value": portfolio_id, "selected": True}]
+                    template["current"] = {"text": portfolio_id, "value": portfolio_id}
+            
+            return dashboard_config
+            
+        except FileNotFoundError:
+            logger.warning(f"Risk analytics dashboard template not found")
+            raise
+    
+    def create_backtesting_dashboard(self, backtest_id: str = None) -> Dict[str, Any]:
+        """
+        Create a comprehensive backtesting results dashboard.
+        
+        Args:
+            backtest_id: Optional specific backtest identifier
+            
+        Returns:
+            Dashboard configuration
+        """
+        dashboard_path = Path(__file__).parent.parent.parent.parent / "monitoring" / "grafana" / "dashboards" / "backtesting-results-dashboard.json"
+        
+        try:
+            with open(dashboard_path, 'r') as f:
+                dashboard_config = json.load(f)
+            
+            # Customize for specific backtest if provided
+            if backtest_id:
+                dashboard_config["dashboard"]["title"] = f"Backtesting Results - {backtest_id}"
+                
+                # Update template variables
+                for template in dashboard_config["dashboard"]["templating"]["list"]:
+                    if template["name"] == "backtest":
+                        template["options"] = [{"text": backtest_id, "value": backtest_id, "selected": True}]
+                        template["current"] = {"text": backtest_id, "value": backtest_id}
+            
+            return dashboard_config
+            
+        except FileNotFoundError:
+            logger.warning(f"Backtesting dashboard template not found")
+            raise
+    
+    def create_dividend_income_dashboard(self, portfolio_id: str) -> Dict[str, Any]:
+        """
+        Create a comprehensive dividend income analytics dashboard.
+        
+        Args:
+            portfolio_id: Portfolio identifier
+            
+        Returns:
+            Dashboard configuration
+        """
+        dashboard_path = Path(__file__).parent.parent.parent.parent / "monitoring" / "grafana" / "dashboards" / "dividend-income-dashboard.json"
+        
+        try:
+            with open(dashboard_path, 'r') as f:
+                dashboard_config = json.load(f)
+            
+            # Customize for specific portfolio
+            dashboard_config["dashboard"]["title"] = f"Dividend Income Analytics - {portfolio_id}"
+            
+            # Update template variables
+            for template in dashboard_config["dashboard"]["templating"]["list"]:
+                if template["name"] == "portfolio":
+                    template["options"] = [{"text": portfolio_id, "value": portfolio_id, "selected": True}]
+                    template["current"] = {"text": portfolio_id, "value": portfolio_id}
+            
+            return dashboard_config
+            
+        except FileNotFoundError:
+            logger.warning(f"Dividend income dashboard template not found")
+            raise
+    
+    def create_all_dashboards(self, portfolio_id: str, backtest_id: str = None) -> Dict[str, Dict[str, Any]]:
+        """
+        Create all comprehensive analytics dashboards for a portfolio.
+        
+        Args:
+            portfolio_id: Portfolio identifier
+            backtest_id: Optional backtest identifier
+            
+        Returns:
+            Dictionary of dashboard configurations
+        """
+        dashboards = {}
+        
+        try:
+            dashboards["performance"] = self.create_portfolio_performance_dashboard(portfolio_id)
+            logger.info(f"Created performance dashboard for portfolio {portfolio_id}")
+        except Exception as e:
+            logger.error(f"Failed to create performance dashboard: {e}")
+        
+        try:
+            dashboards["risk"] = self.create_risk_analytics_dashboard(portfolio_id)
+            logger.info(f"Created risk analytics dashboard for portfolio {portfolio_id}")
+        except Exception as e:
+            logger.error(f"Failed to create risk analytics dashboard: {e}")
+        
+        try:
+            dashboards["backtesting"] = self.create_backtesting_dashboard(backtest_id)
+            logger.info(f"Created backtesting dashboard")
+        except Exception as e:
+            logger.error(f"Failed to create backtesting dashboard: {e}")
+        
+        try:
+            dashboards["dividend"] = self.create_dividend_income_dashboard(portfolio_id)
+            logger.info(f"Created dividend income dashboard for portfolio {portfolio_id}")
+        except Exception as e:
+            logger.error(f"Failed to create dividend income dashboard: {e}")
+        
+        return dashboards
+    
+    def export_all_dashboards(self, portfolio_id: str, output_dir: str, backtest_id: str = None) -> None:
+        """
+        Export all comprehensive dashboards to JSON files.
+        
+        Args:
+            portfolio_id: Portfolio identifier
+            output_dir: Output directory path
+            backtest_id: Optional backtest identifier
+        """
+        try:
+            dashboards = self.create_all_dashboards(portfolio_id, backtest_id)
+            
+            output_path = Path(output_dir)
+            output_path.mkdir(parents=True, exist_ok=True)
+            
+            for dashboard_type, dashboard_config in dashboards.items():
+                filename = f"{dashboard_type}-{portfolio_id}.json"
+                if dashboard_type == "backtesting" and backtest_id:
+                    filename = f"{dashboard_type}-{backtest_id}.json"
+                
+                file_path = output_path / filename
+                with open(file_path, 'w') as f:
+                    json.dump(dashboard_config, f, indent=2)
+                
+                logger.info(f"Exported {dashboard_type} dashboard to {file_path}")
+            
+        except Exception as e:
+            logger.error(f"Failed to export dashboards: {e}")
+            raise
 
 
 def setup_grafana_integration(portfolio_ids: List[str], 
@@ -642,10 +830,31 @@ def setup_grafana_integration(portfolio_ids: List[str],
         with open(dashboard_provisioning_path / "dashboards.yml", 'w') as f:
             json.dump(dashboard_provisioning_config, f, indent=2)
         
-        # Create dashboards for each portfolio
+        # Create comprehensive dashboards for each portfolio
         for portfolio_id in portfolio_ids:
-            dashboard_file = dashboards_path / f"portfolio-{portfolio_id}-dashboard.json"
-            provisioner.export_dashboard_config(portfolio_id, str(dashboard_file))
+            try:
+                # Create all dashboard types
+                dashboards = provisioner.create_all_dashboards(portfolio_id)
+                
+                # Export each dashboard type
+                for dashboard_type, dashboard_config in dashboards.items():
+                    filename = f"{dashboard_type}-{portfolio_id}.json"
+                    dashboard_file = dashboards_path / filename
+                    
+                    with open(dashboard_file, 'w') as f:
+                        json.dump(dashboard_config, f, indent=2)
+                    
+                    logger.info(f"Created {dashboard_type} dashboard for portfolio {portfolio_id}")
+                
+            except Exception as e:
+                logger.error(f"Failed to create dashboards for portfolio {portfolio_id}: {e}")
+                # Fallback to basic dashboard
+                try:
+                    dashboard_file = dashboards_path / f"portfolio-{portfolio_id}-dashboard.json"
+                    provisioner.export_dashboard_config(portfolio_id, str(dashboard_file))
+                    logger.info(f"Created fallback dashboard for portfolio {portfolio_id}")
+                except Exception as fallback_error:
+                    logger.error(f"Failed to create fallback dashboard: {fallback_error}")
         
         logger.info(f"Grafana integration setup completed for {len(portfolio_ids)} portfolios")
         

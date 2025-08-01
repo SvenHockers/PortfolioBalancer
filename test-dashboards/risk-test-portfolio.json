@@ -1,0 +1,918 @@
+{
+  "dashboard": {
+    "id": null,
+    "title": "Risk Analytics - test-portfolio",
+    "tags": [
+      "portfolio",
+      "risk",
+      "analytics",
+      "var",
+      "correlation"
+    ],
+    "timezone": "browser",
+    "panels": [
+      {
+        "id": 1,
+        "title": "Risk Overview",
+        "type": "stat",
+        "targets": [
+          {
+            "expr": "portfolio_var_95{portfolio_id=\"$portfolio\"}",
+            "legendFormat": "VaR (95%)",
+            "refId": "A"
+          },
+          {
+            "expr": "portfolio_cvar_95{portfolio_id=\"$portfolio\"}",
+            "legendFormat": "CVaR (95%)",
+            "refId": "B"
+          },
+          {
+            "expr": "portfolio_beta{portfolio_id=\"$portfolio\"}",
+            "legendFormat": "Portfolio Beta",
+            "refId": "C"
+          },
+          {
+            "expr": "portfolio_tracking_error{portfolio_id=\"$portfolio\"}",
+            "legendFormat": "Tracking Error",
+            "refId": "D"
+          },
+          {
+            "expr": "portfolio_concentration_risk{portfolio_id=\"$portfolio\"}",
+            "legendFormat": "Concentration Risk",
+            "refId": "E"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "percent",
+            "decimals": 2,
+            "thresholds": {
+              "steps": [
+                {
+                  "color": "green",
+                  "value": 0
+                },
+                {
+                  "color": "yellow",
+                  "value": 5
+                },
+                {
+                  "color": "red",
+                  "value": 10
+                }
+              ]
+            }
+          },
+          "overrides": [
+            {
+              "matcher": {
+                "id": "byName",
+                "options": "Portfolio Beta"
+              },
+              "properties": [
+                {
+                  "id": "unit",
+                  "value": "short"
+                },
+                {
+                  "id": "thresholds",
+                  "value": {
+                    "steps": [
+                      {
+                        "color": "green",
+                        "value": 0.8
+                      },
+                      {
+                        "color": "yellow",
+                        "value": 1.2
+                      },
+                      {
+                        "color": "red",
+                        "value": 1.5
+                      }
+                    ]
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        "options": {
+          "reduceOptions": {
+            "values": false,
+            "calcs": [
+              "lastNotNull"
+            ],
+            "fields": ""
+          },
+          "orientation": "horizontal",
+          "textMode": "value_and_name",
+          "colorMode": "background"
+        },
+        "gridPos": {
+          "h": 6,
+          "w": 24,
+          "x": 0,
+          "y": 0
+        }
+      },
+      {
+        "id": 2,
+        "title": "Value at Risk (VaR) Analysis",
+        "type": "timeseries",
+        "targets": [
+          {
+            "expr": "portfolio_var_95{portfolio_id=\"$portfolio\"}",
+            "legendFormat": "VaR 95%",
+            "refId": "A"
+          },
+          {
+            "expr": "portfolio_var_99{portfolio_id=\"$portfolio\"}",
+            "legendFormat": "VaR 99%",
+            "refId": "B"
+          },
+          {
+            "expr": "portfolio_cvar_95{portfolio_id=\"$portfolio\"}",
+            "legendFormat": "CVaR 95%",
+            "refId": "C"
+          },
+          {
+            "expr": "portfolio_cvar_99{portfolio_id=\"$portfolio\"}",
+            "legendFormat": "CVaR 99%",
+            "refId": "D"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "percent",
+            "custom": {
+              "drawStyle": "line",
+              "lineWidth": 2,
+              "fillOpacity": 10,
+              "gradientMode": "none"
+            },
+            "thresholds": {
+              "steps": [
+                {
+                  "color": "green",
+                  "value": 0
+                },
+                {
+                  "color": "yellow",
+                  "value": -5
+                },
+                {
+                  "color": "red",
+                  "value": -10
+                }
+              ]
+            }
+          }
+        },
+        "options": {
+          "tooltip": {
+            "mode": "multi",
+            "sort": "desc"
+          },
+          "legend": {
+            "displayMode": "visible",
+            "placement": "bottom"
+          }
+        },
+        "gridPos": {
+          "h": 8,
+          "w": 12,
+          "x": 0,
+          "y": 6
+        }
+      },
+      {
+        "id": 3,
+        "title": "Risk Factor Exposure",
+        "type": "gauge",
+        "targets": [
+          {
+            "expr": "portfolio_factor_exposure{portfolio_id=\"$portfolio\", factor=\"market\"}",
+            "legendFormat": "Market Factor",
+            "refId": "A"
+          },
+          {
+            "expr": "portfolio_factor_exposure{portfolio_id=\"$portfolio\", factor=\"size\"}",
+            "legendFormat": "Size Factor",
+            "refId": "B"
+          },
+          {
+            "expr": "portfolio_factor_exposure{portfolio_id=\"$portfolio\", factor=\"value\"}",
+            "legendFormat": "Value Factor",
+            "refId": "C"
+          },
+          {
+            "expr": "portfolio_factor_exposure{portfolio_id=\"$portfolio\", factor=\"momentum\"}",
+            "legendFormat": "Momentum Factor",
+            "refId": "D"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "min": -2,
+            "max": 2,
+            "unit": "short",
+            "thresholds": {
+              "steps": [
+                {
+                  "color": "green",
+                  "value": -0.5
+                },
+                {
+                  "color": "yellow",
+                  "value": -1
+                },
+                {
+                  "color": "red",
+                  "value": -1.5
+                }
+              ]
+            }
+          }
+        },
+        "options": {
+          "reduceOptions": {
+            "values": false,
+            "calcs": [
+              "lastNotNull"
+            ],
+            "fields": ""
+          },
+          "orientation": "auto",
+          "showThresholdLabels": false,
+          "showThresholdMarkers": true
+        },
+        "gridPos": {
+          "h": 8,
+          "w": 12,
+          "x": 12,
+          "y": 6
+        }
+      },
+      {
+        "id": 4,
+        "title": "Asset Correlation Heatmap",
+        "type": "heatmap",
+        "targets": [
+          {
+            "expr": "portfolio_correlation_matrix{portfolio_id=\"$portfolio\"}",
+            "format": "heatmap",
+            "refId": "A"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "custom": {
+              "hideFrom": {
+                "legend": false,
+                "tooltip": false,
+                "vis": false
+              },
+              "scaleDistribution": {
+                "type": "linear"
+              }
+            },
+            "color": {
+              "mode": "spectrum",
+              "scheme": "RdYlBu",
+              "steps": 64
+            },
+            "min": -1,
+            "max": 1
+          }
+        },
+        "options": {
+          "calculate": false,
+          "cellGap": 2,
+          "cellValues": {
+            "decimals": 2
+          },
+          "color": {
+            "exponent": 0.5,
+            "fill": "dark-orange",
+            "mode": "spectrum",
+            "reverse": false,
+            "scale": "exponential",
+            "scheme": "RdYlBu",
+            "steps": 64
+          },
+          "exemplars": {
+            "color": "rgba(255,0,255,0.7)"
+          },
+          "filterValues": {
+            "le": 1e-09
+          },
+          "legend": {
+            "show": true
+          },
+          "rowsFrame": {
+            "layout": "auto"
+          },
+          "tooltip": {
+            "show": true,
+            "yHistogram": false
+          },
+          "yAxis": {
+            "axisPlacement": "left",
+            "reverse": false,
+            "unit": "short"
+          }
+        },
+        "gridPos": {
+          "h": 10,
+          "w": 12,
+          "x": 0,
+          "y": 14
+        }
+      },
+      {
+        "id": 5,
+        "title": "Sector Concentration Risk",
+        "type": "piechart",
+        "targets": [
+          {
+            "expr": "portfolio_sector_allocation{portfolio_id=\"$portfolio\"}",
+            "legendFormat": "{{sector}}",
+            "refId": "A"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "percent",
+            "custom": {
+              "hideFrom": {
+                "legend": false,
+                "tooltip": false,
+                "vis": false
+              }
+            },
+            "thresholds": {
+              "steps": [
+                {
+                  "color": "green",
+                  "value": 0
+                },
+                {
+                  "color": "yellow",
+                  "value": 20
+                },
+                {
+                  "color": "red",
+                  "value": 40
+                }
+              ]
+            }
+          }
+        },
+        "options": {
+          "reduceOptions": {
+            "values": false,
+            "calcs": [
+              "lastNotNull"
+            ],
+            "fields": ""
+          },
+          "pieType": "pie",
+          "tooltip": {
+            "mode": "single",
+            "sort": "none"
+          },
+          "legend": {
+            "displayMode": "visible",
+            "placement": "right",
+            "values": [
+              "percent"
+            ]
+          },
+          "displayLabels": [
+            "name",
+            "percent"
+          ]
+        },
+        "gridPos": {
+          "h": 10,
+          "w": 12,
+          "x": 12,
+          "y": 14
+        }
+      },
+      {
+        "id": 6,
+        "title": "Rolling Risk Metrics",
+        "type": "timeseries",
+        "targets": [
+          {
+            "expr": "portfolio_rolling_volatility{portfolio_id=\"$portfolio\", window=\"30d\"}",
+            "legendFormat": "30-day Volatility",
+            "refId": "A"
+          },
+          {
+            "expr": "portfolio_rolling_beta{portfolio_id=\"$portfolio\", window=\"30d\"}",
+            "legendFormat": "30-day Beta",
+            "refId": "B"
+          },
+          {
+            "expr": "portfolio_rolling_tracking_error{portfolio_id=\"$portfolio\", window=\"30d\"}",
+            "legendFormat": "30-day Tracking Error",
+            "refId": "C"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "custom": {
+              "drawStyle": "line",
+              "lineWidth": 2,
+              "fillOpacity": 0
+            }
+          },
+          "overrides": [
+            {
+              "matcher": {
+                "id": "byName",
+                "options": "30-day Volatility"
+              },
+              "properties": [
+                {
+                  "id": "unit",
+                  "value": "percent"
+                },
+                {
+                  "id": "color",
+                  "value": {
+                    "mode": "fixed",
+                    "fixedColor": "red"
+                  }
+                }
+              ]
+            },
+            {
+              "matcher": {
+                "id": "byName",
+                "options": "30-day Beta"
+              },
+              "properties": [
+                {
+                  "id": "unit",
+                  "value": "short"
+                },
+                {
+                  "id": "custom.axisPlacement",
+                  "value": "right"
+                },
+                {
+                  "id": "color",
+                  "value": {
+                    "mode": "fixed",
+                    "fixedColor": "blue"
+                  }
+                }
+              ]
+            },
+            {
+              "matcher": {
+                "id": "byName",
+                "options": "30-day Tracking Error"
+              },
+              "properties": [
+                {
+                  "id": "unit",
+                  "value": "percent"
+                },
+                {
+                  "id": "color",
+                  "value": {
+                    "mode": "fixed",
+                    "fixedColor": "orange"
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        "options": {
+          "tooltip": {
+            "mode": "multi",
+            "sort": "none"
+          },
+          "legend": {
+            "displayMode": "visible",
+            "placement": "bottom"
+          }
+        },
+        "gridPos": {
+          "h": 8,
+          "w": 12,
+          "x": 0,
+          "y": 24
+        }
+      },
+      {
+        "id": 7,
+        "title": "Tail Risk Analysis",
+        "type": "timeseries",
+        "targets": [
+          {
+            "expr": "portfolio_max_drawdown{portfolio_id=\"$portfolio\"}",
+            "legendFormat": "Maximum Drawdown",
+            "refId": "A"
+          },
+          {
+            "expr": "portfolio_recovery_time{portfolio_id=\"$portfolio\"}",
+            "legendFormat": "Recovery Time (days)",
+            "refId": "B"
+          },
+          {
+            "expr": "portfolio_pain_index{portfolio_id=\"$portfolio\"}",
+            "legendFormat": "Pain Index",
+            "refId": "C"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "custom": {
+              "drawStyle": "line",
+              "lineWidth": 2
+            }
+          },
+          "overrides": [
+            {
+              "matcher": {
+                "id": "byName",
+                "options": "Maximum Drawdown"
+              },
+              "properties": [
+                {
+                  "id": "unit",
+                  "value": "percent"
+                },
+                {
+                  "id": "color",
+                  "value": {
+                    "mode": "fixed",
+                    "fixedColor": "red"
+                  }
+                }
+              ]
+            },
+            {
+              "matcher": {
+                "id": "byName",
+                "options": "Recovery Time (days)"
+              },
+              "properties": [
+                {
+                  "id": "unit",
+                  "value": "d"
+                },
+                {
+                  "id": "custom.axisPlacement",
+                  "value": "right"
+                },
+                {
+                  "id": "color",
+                  "value": {
+                    "mode": "fixed",
+                    "fixedColor": "orange"
+                  }
+                }
+              ]
+            },
+            {
+              "matcher": {
+                "id": "byName",
+                "options": "Pain Index"
+              },
+              "properties": [
+                {
+                  "id": "unit",
+                  "value": "short"
+                },
+                {
+                  "id": "color",
+                  "value": {
+                    "mode": "fixed",
+                    "fixedColor": "purple"
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        "options": {
+          "tooltip": {
+            "mode": "multi",
+            "sort": "none"
+          },
+          "legend": {
+            "displayMode": "visible",
+            "placement": "bottom"
+          }
+        },
+        "gridPos": {
+          "h": 8,
+          "w": 12,
+          "x": 12,
+          "y": 24
+        }
+      },
+      {
+        "id": 8,
+        "title": "Geographic Exposure",
+        "type": "bargauge",
+        "targets": [
+          {
+            "expr": "portfolio_geographic_exposure{portfolio_id=\"$portfolio\"}",
+            "legendFormat": "{{country}}",
+            "refId": "A"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "percent",
+            "custom": {
+              "orientation": "horizontal",
+              "displayMode": "gradient"
+            },
+            "thresholds": {
+              "steps": [
+                {
+                  "color": "green",
+                  "value": 0
+                },
+                {
+                  "color": "yellow",
+                  "value": 30
+                },
+                {
+                  "color": "red",
+                  "value": 60
+                }
+              ]
+            }
+          }
+        },
+        "options": {
+          "reduceOptions": {
+            "values": false,
+            "calcs": [
+              "lastNotNull"
+            ],
+            "fields": ""
+          },
+          "orientation": "horizontal",
+          "displayMode": "gradient",
+          "showUnfilled": true
+        },
+        "gridPos": {
+          "h": 8,
+          "w": 12,
+          "x": 0,
+          "y": 32
+        }
+      },
+      {
+        "id": 9,
+        "title": "Risk Limit Monitoring",
+        "type": "table",
+        "targets": [
+          {
+            "expr": "portfolio_risk_limits{portfolio_id=\"$portfolio\"}",
+            "format": "table",
+            "refId": "A"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "custom": {
+              "align": "center",
+              "displayMode": "auto"
+            },
+            "decimals": 2
+          },
+          "overrides": [
+            {
+              "matcher": {
+                "id": "byName",
+                "options": "Status"
+              },
+              "properties": [
+                {
+                  "id": "custom.displayMode",
+                  "value": "color-background"
+                },
+                {
+                  "id": "mappings",
+                  "value": [
+                    {
+                      "options": {
+                        "OK": {
+                          "color": "green",
+                          "index": 0
+                        }
+                      },
+                      "type": "value"
+                    },
+                    {
+                      "options": {
+                        "WARNING": {
+                          "color": "yellow",
+                          "index": 1
+                        }
+                      },
+                      "type": "value"
+                    },
+                    {
+                      "options": {
+                        "BREACH": {
+                          "color": "red",
+                          "index": 2
+                        }
+                      },
+                      "type": "value"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "matcher": {
+                "id": "byName",
+                "options": "Current Value"
+              },
+              "properties": [
+                {
+                  "id": "unit",
+                  "value": "percent"
+                }
+              ]
+            },
+            {
+              "matcher": {
+                "id": "byName",
+                "options": "Limit"
+              },
+              "properties": [
+                {
+                  "id": "unit",
+                  "value": "percent"
+                }
+              ]
+            }
+          ]
+        },
+        "options": {
+          "showHeader": true,
+          "sortBy": [
+            {
+              "desc": true,
+              "displayName": "Status"
+            }
+          ]
+        },
+        "gridPos": {
+          "h": 8,
+          "w": 12,
+          "x": 12,
+          "y": 32
+        }
+      },
+      {
+        "id": 10,
+        "title": "Risk Alerts & Notifications",
+        "type": "logs",
+        "targets": [
+          {
+            "expr": "{job=\"analytics-service\"} |= \"risk\" |= \"alert\" | json | portfolio_id=\"$portfolio\"",
+            "refId": "A"
+          }
+        ],
+        "options": {
+          "showTime": true,
+          "showLabels": true,
+          "showCommonLabels": false,
+          "wrapLogMessage": true,
+          "prettifyLogMessage": false,
+          "enableLogDetails": true,
+          "dedupStrategy": "none",
+          "sortOrder": "Descending"
+        },
+        "gridPos": {
+          "h": 6,
+          "w": 24,
+          "x": 0,
+          "y": 40
+        }
+      }
+    ],
+    "time": {
+      "from": "now-6M",
+      "to": "now"
+    },
+    "timepicker": {
+      "refresh_intervals": [
+        "5s",
+        "10s",
+        "30s",
+        "1m",
+        "5m",
+        "15m",
+        "30m",
+        "1h",
+        "2h",
+        "1d"
+      ],
+      "time_options": [
+        "5m",
+        "15m",
+        "1h",
+        "6h",
+        "12h",
+        "24h",
+        "2d",
+        "7d",
+        "30d"
+      ]
+    },
+    "templating": {
+      "list": [
+        {
+          "name": "portfolio",
+          "type": "query",
+          "query": "label_values(portfolio_var_95, portfolio_id)",
+          "current": {
+            "text": "test-portfolio",
+            "value": "test-portfolio"
+          },
+          "hide": 0,
+          "includeAll": false,
+          "multi": false,
+          "options": [
+            {
+              "text": "test-portfolio",
+              "value": "test-portfolio",
+              "selected": true
+            }
+          ],
+          "refresh": 1,
+          "regex": "",
+          "skipUrlSync": false,
+          "sort": 0
+        },
+        {
+          "name": "confidence_level",
+          "type": "custom",
+          "options": [
+            {
+              "text": "95%",
+              "value": "95",
+              "selected": true
+            },
+            {
+              "text": "99%",
+              "value": "99",
+              "selected": false
+            },
+            {
+              "text": "99.9%",
+              "value": "99.9",
+              "selected": false
+            }
+          ],
+          "current": {
+            "text": "95%",
+            "value": "95"
+          }
+        }
+      ]
+    },
+    "annotations": {
+      "list": [
+        {
+          "name": "Risk Limit Breaches",
+          "datasource": "Portfolio Analytics API",
+          "enable": true,
+          "expr": "portfolio_risk_breach_events{portfolio_id=\"$portfolio\"}",
+          "iconColor": "red",
+          "textFormat": "Risk Breach: {{risk_type}}"
+        },
+        {
+          "name": "Market Stress Events",
+          "datasource": "Portfolio Analytics API",
+          "enable": true,
+          "expr": "market_stress_events",
+          "iconColor": "orange",
+          "textFormat": "Market Event: {{event_type}}"
+        }
+      ]
+    },
+    "refresh": "30s",
+    "schemaVersion": 30,
+    "version": 1
+  },
+  "overwrite": true
+}

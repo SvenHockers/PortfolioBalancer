@@ -28,8 +28,10 @@ class WebSocketManager:
         self.async_processor = async_processor
         self.connections: Dict[str, Set[WebSocketServerProtocol]] = {}
         self.task_subscribers: Dict[str, Set[WebSocketServerProtocol]] = {}
+        self.grafana_subscribers: Dict[str, Set[WebSocketServerProtocol]] = {}
         self.running = False
         self.update_interval = 2.0  # seconds
+        self.grafana_update_interval = 5.0  # seconds for Grafana live data
         
         logger.info("WebSocket manager initialized")
     
@@ -178,64 +180,148 @@ class WebSocketManager:
         self.running = False
         logger.info("Stopped WebSocket status updates")
     
+    async def register_grafana_connection(self, websocket: WebSocketServerProtocol, portfolio_id: str):
+        """
+        Register a WebSocket connection for Grafana live data.
+        
+        Args:
+            websocket: WebSocket connection
+            portfolio_id: Portfolio ID to subscribe to
+        """
+        try:
+            if portfolio_id not in self.grafana_subscribers:
+                self.grafana_subscribers[portfolio_id] = set()
+            self.grafana_subscribers[portfolio_id].add(websocket)
+            
+            logger.info(f"Registered Grafana WebSocket connection for portfolio {portfolio_id}")
+            
+            # Send initial data
+            await self.send_grafana_live_data(portfolio_id, websocket)
+            
+        except Exception as e:
+            logger.error(f"Failed to register Grafana WebSocket connection: {e}")
+    
+    async def unregister_grafana_connection(self, websocket: WebSocketServerProtocol, portfolio_id: str):
+        """
+        Unregister a Grafana WebSocket connection.
+        
+        Args:
+            websocket: WebSocket connection
+            portfolio_id: Portfolio ID to unsubscribe from
+        """
+        try:
+            if portfolio_id in self.grafana_subscribers:
+                self.grafana_subscribers[portfolio_id].discard(websocket)
+                if not self.grafana_subscribers[portfolio_id]:
+                    del self.grafana_subscribers[portfolio_id]
+            
+            logger.info(f"Unregistered Grafana WebSocket connection for portfolio {portfolio_id}")
+            
+        except Exception as e:
+            logger.error(f"Failed to unregister Grafana WebSocket connection: {e}")
+    
+    async def send_grafana_live_data(self, portfolio_id: str, websocket: Optional[WebSocketServerProtocol] = None):
+        """
+        Send live portfolio data to Grafana WebSocket connections.
+        
+        Args:
+            portfolio_id: Portfolio ID
+            websocket: Specific WebSocket to send to (None for all subscribers)
+        """
+        try:
+            # Generate live data (in real implementation, get from analytics service)
+            current_time = datetime.utcnow()
+            
+            live_data = {
+                'type': 'grafana_live_data',
+                'portfolio_id': portfolio_id,
+                'timestamp': current_time.isoformat(),
+                'metrics': {
+                    'portfolio_value': 100000 + (current_time.minute * 100),
+                    'daily_return': 0.005 + (current_time.second - 30) * 0.0001,
+                    'volatility': 0.15 + (current_time.second % 10) * 0.001,
+                    'sharpe_ratio': 1.2 + (current_time.second % 20 - 10) * 0.01,
+                    'beta': 1.0 + (current_time.second % 15 - 7) * 0.01,
+                    'alpha': 0.02 + (current_time.second % 12 - 6) * 0.001
+                }
+            }
+            
+            message_json = json.dumps(live_data)
+            
+            # Send to specific websocket or all subscribers
+            if websocket:
+                await self.send_to_websocket(websocket, message_json)
+            else:
+                await self.broadcast_to_grafana_subscribers(portfolio_id, message_json)
+                
+        except Exception as e:
+            logger.error(f"Failed to send Grafana live data for {portfolio_id}: {e}")
+    
+    async def broadcast_to_grafana_subscribers(self, portfolio_id: str, message: str):
+        """
+        Broadcast message to all Grafana subscribers of a portfolio.
+        
+        Args:
+            portfolio_id: Portfolio ID
+            message: JSON message to broadcast
+        """
+        if portfolio_id not in self.grafana_subscribers:
+            return
+        
+        # Get copy of subscribers to avoid modification during iteration
+        subscribers = self.grafana_subscribers[portfolio_id].copy()
+        
+        # Send to all subscribers
+        for websocket in subscribers:
+            await self.send_to_websocket(websocket, message)
+
     async def handle_websocket_connection(self, websocket: WebSocketServerProtocol, path: str):
         """
         Handle incoming WebSocket connection.
         
         Args:
             websocket: WebSocket connection
-            path: WebSocket path (should contain task ID)
+            path: WebSocket path (should contain task ID or portfolio ID)
         """
-        task_id = None
+        connection_id = None
+        connection_type = None
+        
         try:
-            # Extract task ID from path (e.g., /ws/backtest/task_id)
+            # Extract connection info from path
             path_parts = path.strip('/').split('/')
+            
             if len(path_parts) >= 3 and path_parts[0] == 'ws':
-                task_id = path_parts[2]
+                connection_type = path_parts[1]  # 'task', 'grafana', etc.
+                connection_id = path_parts[2]    # task_id or portfolio_id
             else:
                 await websocket.send(json.dumps({
                     'type': 'error',
-                    'message': 'Invalid WebSocket path. Expected format: /ws/{operation_type}/{task_id}'
+                    'message': 'Invalid WebSocket path. Expected format: /ws/{type}/{id}'
                 }))
                 return
             
-            # Register connection
-            await self.register_connection(websocket, task_id)
-            
-            # Send welcome message
-            await websocket.send(json.dumps({
-                'type': 'connected',
-                'task_id': task_id,
-                'message': f'Connected to task {task_id} updates'
-            }))
-            
-            # Handle incoming messages
-            async for message in websocket:
-                try:
-                    data = json.loads(message)
-                    await self.handle_websocket_message(websocket, task_id, data)
-                except json.JSONDecodeError:
-                    await websocket.send(json.dumps({
-                        'type': 'error',
-                        'message': 'Invalid JSON message'
-                    }))
-                except Exception as e:
-                    logger.error(f"Error handling WebSocket message: {e}")
-                    await websocket.send(json.dumps({
-                        'type': 'error',
-                        'message': str(e)
-                    }))
-        
-        except ConnectionClosed:
-            logger.debug(f"WebSocket connection closed for task {task_id}")
-        except WebSocketException as e:
-            logger.error(f"WebSocket error for task {task_id}: {e}")
-        except Exception as e:
-            logger.error(f"Unexpected error in WebSocket handler: {e}")
-        finally:
-            # Unregister connection
-            if task_id:
-                await self.unregister_connection(websocket, task_id)
+            # Handle different connection types
+            if connection_type == 'task':
+                # Register for task updates
+                await self.register_connection(websocket, connection_id)
+                
+                # Send welcome message
+                await websocket.send(json.dumps({
+                    'type': 'connected',
+                    'connection_type': 'task',
+                    'task_id': connection_id,
+                    'message': f'Connected to task {connection_id} updates'
+                }))
+                
+            elif connection_type == 'grafana':
+                # Register for Grafana live data
+                await self.register_grafana_connection(websocket, connection_id)
+                
+                # Send welcome message
+                await websocket.send(json.dumps({
+                    'type': 'connected',
+                    'connection_type': 'grafana',
+ 
     
     async def handle_websocket_message(self, websocket: WebSocketServerProtocol, 
                                      task_id: str, data: Dict[str, Any]):

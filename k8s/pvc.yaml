@@ -27,3 +27,20 @@ spec:
     requests:
       storage: 5Gi
   storageClassName: standard  # Adjust based on your cluster's storage classes
+
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: analytics-cache-pvc
+  namespace: portfolio-rebalancer
+  labels:
+    app: portfolio-rebalancer
+    component: analytics
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi
+  storageClassName: standard  # Adjust based on your cluster's storage classes

@@ -216,3 +216,187 @@ spec:
       - name: logs-storage
         persistentVolumeClaim:
           claimName: portfolio-logs-pvc
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: portfolio-analytics
+  namespace: portfolio-rebalancer
+  labels:
+    app: portfolio-rebalancer
+    component: analytics
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: portfolio-rebalancer
+      component: analytics
+  template:
+    metadata:
+      labels:
+        app: portfolio-rebalancer
+        component: analytics
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8086"
+        prometheus.io/path: "/metrics"
+    spec:
+      containers:
+      - name: analytics-service
+        image: portfolio-rebalancer/analytics:latest
+        imagePullPolicy: IfNotPresent
+        command: ["python", "-m", "src.portfolio_rebalancer.services.analytics_service", "--mode", "server", "--host", "0.0.0.0", "--port", "8084"]
+        env:
+        - name: EXECUTION_MODE
+          value: "server"
+        - name: ANALYTICS_SERVICE_PORT
+          value: "8084"
+        - name: WEBSOCKET_PORT
+          value: "8085"
+        - name: PROMETHEUS_METRICS_PORT
+          value: "8086"
+        envFrom:
+        - configMapRef:
+            name: portfolio-config
+        - configMapRef:
+            name: analytics-config
+        - secretRef:
+            name: analytics-secrets
+        volumeMounts:
+        - name: data-storage
+          mountPath: /app/data
+        - name: logs-storage
+          mountPath: /app/logs
+        - name: analytics-cache
+          mountPath: /app/cache
+        resources:
+          requests:
+            memory: "1Gi"
+            cpu: "500m"
+          limits:
+            memory: "2Gi"
+            cpu: "2000m"
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8084
+          initialDelaySeconds: 60
+          periodSeconds: 30
+          timeoutSeconds: 10
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /ready
+            port: 8084
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        ports:
+        - containerPort: 8084
+          name: http
+        - containerPort: 8085
+          name: websocket
+        - containerPort: 8086
+          name: metrics
+        securityContext:
+          runAsNonRoot: true
+          runAsUser: 1001
+          readOnlyRootFilesystem: false
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+      volumes:
+      - name: data-storage
+        persistentVolumeClaim:
+          claimName: portfolio-data-pvc
+      - name: logs-storage
+        persistentVolumeClaim:
+          claimName: portfolio-logs-pvc
+      - name: analytics-cache
+        persistentVolumeClaim:
+          claimName: analytics-cache-pvc
+      securityContext:
+        fsGroup: 1001
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: portfolio-analytics-worker
+  namespace: portfolio-rebalancer
+  labels:
+    app: portfolio-rebalancer
+    component: analytics-worker
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: portfolio-rebalancer
+      component: analytics-worker
+  template:
+    metadata:
+      labels:
+        app: portfolio-rebalancer
+        component: analytics-worker
+    spec:
+      containers:
+      - name: analytics-worker
+        image: portfolio-rebalancer/analytics:latest
+        imagePullPolicy: IfNotPresent
+        command: ["celery", "-A", "src.portfolio_rebalancer.analytics.async_processing", "worker", "--loglevel=info", "--concurrency=2"]
+        envFrom:
+        - configMapRef:
+            name: portfolio-config
+        - configMapRef:
+            name: analytics-config
+        - secretRef:
+            name: analytics-secrets
+        volumeMounts:
+        - name: data-storage
+          mountPath: /app/data
+        - name: logs-storage
+          mountPath: /app/logs
+        - name: analytics-cache
+          mountPath: /app/cache
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "250m"
+          limits:
+            memory: "1Gi"
+            cpu: "1000m"
+        livenessProbe:
+          exec:
+            command:
+            - celery
+            - -A
+            - src.portfolio_rebalancer.analytics.async_processing
+            - inspect
+            - ping
+          initialDelaySeconds: 30
+          periodSeconds: 30
+          timeoutSeconds: 10
+          failureThreshold: 3
+        securityContext:
+          runAsNonRoot: true
+          runAsUser: 1001
+          readOnlyRootFilesystem: false
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+      volumes:
+      - name: data-storage
+        persistentVolumeClaim:
+          claimName: portfolio-data-pvc
+      - name: logs-storage
+        persistentVolumeClaim:
+          claimName: portfolio-logs-pvc
+      - name: analytics-cache
+        persistentVolumeClaim:
+          claimName: analytics-cache-pvc
+      securityContext:
+        fsGroup: 1001
