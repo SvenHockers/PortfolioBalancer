@@ -57,31 +57,40 @@ services:
       - RETRY_ATTEMPTS=${RETRY_ATTEMPTS:-3}
       - RETRY_DELAY=${RETRY_DELAY:-300}
 
+      # Service startup configuration
+      - SERVICE_STARTUP_DELAY=${SERVICE_STARTUP_DELAY:-30}
+      - SERVICE_RETRY_ATTEMPTS=${SERVICE_RETRY_ATTEMPTS:-5}
+      - SERVICE_RETRY_DELAY=${SERVICE_RETRY_DELAY:-10}
+
       # Logging Configuration
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
       - LOG_FORMAT=${LOG_FORMAT:-json}
       - LOG_FILE_PATH=/app/logs/scheduler.log
+      
+      # Cache Configuration
+      - YFINANCE_CACHE_DIR=/app/cache/yfinance
     volumes:
       - portfolio_data:/app/data
       - portfolio_logs:/app/logs
+      - portfolio_cache:/app/cache
     networks:
       - portfolio-network
-    restart: unless-stopped
+    restart: on-failure:5
     depends_on:
       data-storage:
         condition: service_completed_successfully
       data-fetcher:
-        condition: service_healthy
+        condition: service_started
       optimizer:
-        condition: service_healthy
+        condition: service_started
       executor:
-        condition: service_healthy
+        condition: service_started
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8083/health"]
       interval: 30s
       timeout: 10s
-      retries: 3
-      start_period: 40s
+      retries: 5
+      start_period: 90s
 
   # Data fetcher service
   data-fetcher:
@@ -104,11 +113,22 @@ services:
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
       - LOG_FORMAT=${LOG_FORMAT:-json}
       - LOG_FILE_PATH=/app/logs/fetcher.log
+      
+      # Service startup configuration
+      - SERVICE_STARTUP_DELAY=${SERVICE_STARTUP_DELAY:-30}
+      - SERVICE_RETRY_ATTEMPTS=${SERVICE_RETRY_ATTEMPTS:-5}
+      - SERVICE_RETRY_DELAY=${SERVICE_RETRY_DELAY:-10}
+      - SERVICE_MAX_RETRY_DELAY=${SERVICE_MAX_RETRY_DELAY:-60}
+      
+      # Cache Configuration
+      - YFINANCE_CACHE_DIR=/app/cache/yfinance
     volumes:
       - portfolio_data:/app/data
       - portfolio_logs:/app/logs
+      - portfolio_cache:/app/cache
     networks:
       - portfolio-network
+    restart: on-failure:5
     depends_on:
       data-storage:
         condition: service_completed_successfully
@@ -116,8 +136,8 @@ services:
       test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
       interval: 30s
       timeout: 10s
-      retries: 3
-      start_period: 40s
+      retries: 5
+      start_period: 60s
 
   # Portfolio optimizer service
   optimizer:
@@ -145,11 +165,22 @@ services:
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
       - LOG_FORMAT=${LOG_FORMAT:-json}
       - LOG_FILE_PATH=/app/logs/optimizer.log
+      
+      # Service startup configuration
+      - SERVICE_STARTUP_DELAY=${SERVICE_STARTUP_DELAY:-30}
+      - SERVICE_RETRY_ATTEMPTS=${SERVICE_RETRY_ATTEMPTS:-5}
+      - SERVICE_RETRY_DELAY=${SERVICE_RETRY_DELAY:-10}
+      - SERVICE_MAX_RETRY_DELAY=${SERVICE_MAX_RETRY_DELAY:-60}
+      
+      # Cache Configuration
+      - YFINANCE_CACHE_DIR=/app/cache/yfinance
     volumes:
       - portfolio_data:/app/data
       - portfolio_logs:/app/logs
+      - portfolio_cache:/app/cache
     networks:
       - portfolio-network
+    restart: on-failure:5
     depends_on:
       data-storage:
         condition: service_completed_successfully
@@ -157,8 +188,8 @@ services:
       test: ["CMD", "curl", "-f", "http://localhost:8081/health"]
       interval: 30s
       timeout: 10s
-      retries: 3
-      start_period: 40s
+      retries: 5
+      start_period: 60s
 
   # Trade executor service
   executor:
@@ -189,11 +220,22 @@ services:
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
       - LOG_FORMAT=${LOG_FORMAT:-json}
       - LOG_FILE_PATH=/app/logs/executor.log
+      
+      # Service startup configuration
+      - SERVICE_STARTUP_DELAY=${SERVICE_STARTUP_DELAY:-30}
+      - SERVICE_RETRY_ATTEMPTS=${SERVICE_RETRY_ATTEMPTS:-5}
+      - SERVICE_RETRY_DELAY=${SERVICE_RETRY_DELAY:-10}
+      - SERVICE_MAX_RETRY_DELAY=${SERVICE_MAX_RETRY_DELAY:-60}
+      
+      # Cache Configuration
+      - YFINANCE_CACHE_DIR=/app/cache/yfinance
     volumes:
       - portfolio_data:/app/data
       - portfolio_logs:/app/logs
+      - portfolio_cache:/app/cache
     networks:
       - portfolio-network
+    restart: on-failure:5
     depends_on:
       data-storage:
         condition: service_completed_successfully
@@ -201,8 +243,8 @@ services:
       test: ["CMD", "curl", "-f", "http://localhost:8082/health"]
       interval: 30s
       timeout: 10s
-      retries: 3
-      start_period: 40s
+      retries: 5
+      start_period: 60s
 
   # Analytics service
   analytics:
@@ -262,6 +304,9 @@ services:
       - LOG_FORMAT=${LOG_FORMAT:-json}
       - LOG_FILE_PATH=/app/logs/analytics.log
       
+      # Cache Configuration
+      - YFINANCE_CACHE_DIR=/app/cache/yfinance
+      
       # Monitoring Configuration
       - PROMETHEUS_METRICS_PORT=${PROMETHEUS_METRICS_PORT:-8086}
       - ENABLE_PROMETHEUS_METRICS=${ENABLE_PROMETHEUS_METRICS:-true}
@@ -269,6 +314,7 @@ services:
       - portfolio_data:/app/data
       - portfolio_logs:/app/logs
       - analytics_cache:/app/cache
+      - portfolio_cache:/app/cache/yfinance
     networks:
       - portfolio-network
     depends_on:
@@ -320,10 +366,14 @@ services:
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
       - LOG_FORMAT=${LOG_FORMAT:-json}
       - LOG_FILE_PATH=/app/logs/analytics-worker.log
+      
+      # Cache Configuration
+      - YFINANCE_CACHE_DIR=/app/cache/yfinance
     volumes:
       - portfolio_data:/app/data
       - portfolio_logs:/app/logs
       - analytics_cache:/app/cache
+      - portfolio_cache:/app/cache/yfinance
     networks:
       - portfolio-network
     depends_on:
@@ -349,16 +399,20 @@ services:
     command: |
       sh -c "
         echo 'Initializing data storage...' &&
-        mkdir -p /app/data /app/logs &&
-        chown -R 1000:1000 /app/data /app/logs &&
-        chmod -R 755 /app/data /app/logs &&
-        echo 'Data storage initialization complete'
+        sleep 5 &&
+        mkdir -p /app/data /app/logs /app/cache/yfinance &&
+        chown -R 1000:1000 /app/data /app/logs /app/cache &&
+        chmod -R 755 /app/data /app/logs /app/cache &&
+        echo 'Data storage initialization complete' &&
+        sleep 2
       "
     volumes:
       - portfolio_data:/app/data
       - portfolio_logs:/app/logs
+      - portfolio_cache:/app/cache
     networks:
       - portfolio-network
+    restart: "no"
 
   # Optional: Monitoring with Prometheus
   prometheus:
@@ -506,6 +560,12 @@ volumes:
       type: none
       o: bind
       device: ${LOGS_PATH:-${PWD}/logs}
+  portfolio_cache:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${CACHE_PATH:-${PWD}/cache}
 
   # Monitoring volumes
   prometheus_data:

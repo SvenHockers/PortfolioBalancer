@@ -57,18 +57,19 @@ COPY src/ ./src/
 COPY tests/ ./tests/
 COPY .env.example ./
 
-# Create necessary directories
-RUN mkdir -p data logs && \
+# Create necessary directories including cache for yfinance
+RUN mkdir -p data logs cache/yfinance && \
     chown -R portfolio:portfolio /app && \
     chmod -R 755 /app
 
 # Switch to non-root user
 USER portfolio
 
-# Set Python path
+# Set Python path and yfinance cache location
 ENV PYTHONPATH=/app
 ENV PYTHONUNBUFFERED=1
 ENV PYTHONDONTWRITEBYTECODE=1
+ENV YFINANCE_CACHE_DIR=/app/cache/yfinance
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
