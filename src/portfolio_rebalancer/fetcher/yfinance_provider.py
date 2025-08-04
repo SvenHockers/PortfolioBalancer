@@ -10,6 +10,9 @@ from requests.exceptions import RequestException, HTTPError, Timeout, Connection
 
 from ..common.interfaces import DataProvider
 from ..common.models import PriceData
+from ..common.api_error_handling import (
+    api_error_handler, handle_yfinance_error, setup_yfinance_cache
+)
 
 
 logger = logging.getLogger(__name__)
@@ -38,6 +41,9 @@ class YFinanceProvider(DataProvider):
         self.base_delay = base_delay
         self.max_delay = max_delay
         self.timeout = timeout
+        
+        # Set up yfinance cache to avoid permission errors
+        setup_yfinance_cache()
     
     def fetch_prices(self, tickers: List[str], start_date: date, end_date: date) -> pd.DataFrame:
         """
@@ -111,50 +117,38 @@ class YFinanceProvider(DataProvider):
         Returns:
             DataFrame with price data or None if failed
         """
-        last_exception = None
+        @api_error_handler.with_retry(f"Fetch yfinance data for {ticker}")
+        def _fetch_data():
+            # Create yfinance Ticker object
+            yf_ticker = yf.Ticker(ticker)
+            
+            # Fetch historical data
+            hist_data = yf_ticker.history(
+                start=start_date,
+                end=end_date + timedelta(days=1),  # yfinance end date is exclusive
+                timeout=self.timeout,
+                raise_errors=True
+            )
+            
+            if hist_data.empty:
+                logger.warning(f"No historical data available for {ticker}")
+                return None
+            
+            return hist_data
         
-        for attempt in range(self.max_retries + 1):
-            try:
-                logger.debug(f"Fetching data for {ticker}, attempt {attempt + 1}")
-                
-                # Create yfinance Ticker object
-                yf_ticker = yf.Ticker(ticker)
-                
-                # Fetch historical data
-                hist_data = yf_ticker.history(
-                    start=start_date,
-                    end=end_date + timedelta(days=1),  # yfinance end date is exclusive
-                    timeout=self.timeout,
-                    raise_errors=True
-                )
-                
-                if hist_data.empty:
-                    logger.warning(f"No historical data available for {ticker}")
-                    return None
-                
-                # Convert to our expected format
-                ticker_df = self._convert_yfinance_data(hist_data, ticker)
-                
-                return ticker_df
-                
-            except (RequestException, HTTPError, Timeout, ConnectionError) as e:
-                last_exception = e
-                if attempt < self.max_retries:
-                    delay = min(self.base_delay * (2 ** attempt), self.max_delay)
-                    logger.warning(f"Network error fetching {ticker} (attempt {attempt + 1}): {e}. Retrying in {delay}s")
-                    time.sleep(delay)
-                else:
-                    logger.error(f"Network error fetching {ticker} after {self.max_retries + 1} attempts: {e}")
-                    
-            except Exception as e:
-                logger.error(f"Unexpected error fetching {ticker}: {e}")
-                last_exception = e
-                break
-        
-        if last_exception:
-            logger.error(f"Failed to fetch data for {ticker}: {last_exception}")
-        
-        return None
+        try:
+            hist_data = _fetch_data()
+            if hist_data is None:
+                return None
+            
+            # Convert to our expected format
+            ticker_df = self._convert_yfinance_data(hist_data, ticker)
+            return ticker_df
+            
+        except Exception as e:
+            logger.error(f"Failed to fetch data for {ticker}: {e}")
+            handle_yfinance_error(e, ticker, f"Fetch data for {ticker}")
+            return None
     
     def _convert_yfinance_data(self, hist_data: pd.DataFrame, ticker: str) -> Optional[pd.DataFrame]:
         """

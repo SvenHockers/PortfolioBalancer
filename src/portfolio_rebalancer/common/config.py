@@ -107,6 +107,7 @@ class ExecutorConfig:
     """Configuration for trade execution."""
     rebalance_threshold: float = 0.05  # 5% drift threshold
     rebalance_absolute_threshold: float = 100.0  # Minimum dollar amount to trigger rebalancing
+    rebalance_relative_threshold: float = 0.05  # 5% relative drift threshold
     order_type: str = OrderType.MARKET.value
     broker_type: str = BrokerType.ALPACA.value
     dry_run: bool = False  # If True, log trades but don't execute
@@ -120,6 +121,8 @@ class ExecutorConfig:
             raise ValueError("rebalance_threshold must be between 0 and 1")
         if self.rebalance_absolute_threshold < 0:
             raise ValueError("rebalance_absolute_threshold must be non-negative")
+        if not 0 <= self.rebalance_relative_threshold <= 1:
+            raise ValueError("rebalance_relative_threshold must be between 0 and 1")
         if not 0 < self.max_position_size <= 1:
             raise ValueError("max_position_size must be between 0 and 1")
         if self.order_timeout < 1:
@@ -152,6 +155,7 @@ class BrokerConfig:
     alpaca_timeout: int = 30
     
     # Interactive Brokers configuration
+    ib_enabled: bool = True
     ib_host: str = "127.0.0.1"
     ib_port: int = 7497
     ib_client_id: int = 1
@@ -330,6 +334,7 @@ class ConfigManager:
         # Executor configuration
         'executor.rebalance_threshold': ('REBALANCE_THRESHOLD', float),
         'executor.rebalance_absolute_threshold': ('REBALANCE_ABSOLUTE_THRESHOLD', float),
+        'executor.rebalance_relative_threshold': ('REBALANCE_RELATIVE_THRESHOLD', float),
         'executor.order_type': ('ORDER_TYPE', str),
         'executor.broker_type': ('BROKER_TYPE', str),
         'executor.dry_run': ('DRY_RUN', lambda x: x.lower() in ('true', '1', 'yes')),
@@ -342,6 +347,7 @@ class ConfigManager:
         'broker.alpaca_secret_key': ('ALPACA_SECRET_KEY', str),
         'broker.alpaca_base_url': ('ALPACA_BASE_URL', str),
         'broker.alpaca_timeout': ('ALPACA_TIMEOUT', int),
+        'broker.ib_enabled': ('IB_ENABLED', lambda x: x.lower() in ('true', '1', 'yes')),
         'broker.ib_host': ('IB_HOST', str),
         'broker.ib_port': ('IB_PORT', int),
         'broker.ib_client_id': ('IB_CLIENT_ID', int),
