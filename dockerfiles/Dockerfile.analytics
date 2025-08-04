@@ -168,14 +168,3 @@ USER analytics
 
 # Override command for development
 CMD ["python", "-c", "print('Analytics development container ready. Use docker exec to run commands.')"]
-
-# Testing stage
-FROM development as testing
-
-# Copy test configuration
-COPY pytest.ini .
-COPY .coveragerc .
-COPY tests/ ./tests/
-
-# Run tests by default
-CMD ["pytest", "tests/", "-v", "--cov=src.portfolio_rebalancer.analytics", "--cov-report=html", "--cov-report=term"]
