@@ -89,8 +89,8 @@ COPY setup.py .
 # Install the package in development mode
 RUN pip install -e .
 
-# Create necessary directories and set permissions
-RUN mkdir -p data logs cache .credentials .keys ssl && \
+# Create necessary directories and set permissions including yfinance cache
+RUN mkdir -p data logs cache/yfinance .credentials .keys ssl && \
     chown -R analytics:analytics /app && \
     chmod -R 755 /app && \
     chmod 700 /app/.credentials /app/.keys /app/ssl
@@ -109,6 +109,7 @@ USER analytics
 ENV PYTHONPATH=/app
 ENV PYTHONUNBUFFERED=1
 ENV PYTHONDONTWRITEBYTECODE=1
+ENV YFINANCE_CACHE_DIR=/app/cache/yfinance
 ENV ANALYTICS_SERVICE_PORT=8084
 ENV WEBSOCKET_PORT=8085
 ENV SSL_CERT_PATH=/app/ssl/cert.pem
