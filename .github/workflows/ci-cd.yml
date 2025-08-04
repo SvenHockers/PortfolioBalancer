@@ -105,7 +105,7 @@ jobs:
 
     strategy:
       matrix:
-        service: [fetcher, optimizer, executor, scheduler]
+        service: [fetcher, optimizer, executor, scheduler, analytics]
 
     steps:
       - name: Checkout code
@@ -182,6 +182,7 @@ jobs:
             - `${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}:optimizer`
             - `${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}:executor`
             - `${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}:scheduler`
+            - `${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}:analytics`
           draft: false
           prerelease: false
           generate_release_notes: true
