@@ -243,7 +243,7 @@ class PortfolioOptimizer:
             if not self.risk_model.validate_data_quality(
                 self.risk_model.calculate_returns(price_data)
             ):
-                raise PortfolioOptimizerError("Price data quality validation failed")
+                raise PortfolioOptimizerError(f"Price data quality validation failed: {self.risk_model.calculate_returns(price_data)} < 252")
             
             logger.debug(f"Retrieved price data: {price_data.shape[0]} days, {price_data.shape[1]} tickers")
             

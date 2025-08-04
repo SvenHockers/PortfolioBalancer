@@ -57,3 +57,56 @@ spec:
     targetPort: 8082
     protocol: TCP
   type: ClusterIP
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: portfolio-analytics-service
+  namespace: portfolio-rebalancer
+  labels:
+    app: portfolio-rebalancer
+    component: analytics
+  annotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "8086"
+    prometheus.io/path: "/metrics"
+spec:
+  selector:
+    app: portfolio-rebalancer
+    component: analytics
+  ports:
+  - name: http
+    port: 8084
+    targetPort: 8084
+    protocol: TCP
+  - name: websocket
+    port: 8085
+    targetPort: 8085
+    protocol: TCP
+  - name: metrics
+    port: 8086
+    targetPort: 8086
+    protocol: TCP
+  type: ClusterIP
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: portfolio-analytics-headless
+  namespace: portfolio-rebalancer
+  labels:
+    app: portfolio-rebalancer
+    component: analytics
+spec:
+  selector:
+    app: portfolio-rebalancer
+    component: analytics
+  ports:
+  - name: http
+    port: 8084
+    targetPort: 8084
+    protocol: TCP
+  clusterIP: None
+  type: ClusterIP

@@ -1,0 +1,315 @@
+{
+  "dashboard": {
+    "id": null,
+    "title": "Portfolio Analytics - Mobile Responsive",
+    "tags": ["portfolio", "mobile", "responsive", "analytics"],
+    "timezone": "browser",
+    "refresh": "5m",
+    "time": {
+      "from": "now-30d",
+      "to": "now"
+    },
+    "timepicker": {
+      "refresh_intervals": ["30s", "1m", "5m", "15m", "30m", "1h"],
+      "time_options": ["5m", "15m", "1h", "6h", "12h", "24h", "2d", "7d", "30d"],
+      "nowDelay": "1m"
+    },
+    "templating": {
+      "list": [
+        {
+          "name": "portfolio",
+          "type": "custom",
+          "label": "Portfolio",
+          "options": [
+            {"text": "Demo Portfolio", "value": "demo-portfolio", "selected": true}
+          ],
+          "current": {"text": "Demo Portfolio", "value": "demo-portfolio"},
+          "hide": 0
+        },
+        {
+          "name": "benchmark",
+          "type": "custom",
+          "label": "Benchmark",
+          "options": [
+            {"text": "S&P 500", "value": "SPY", "selected": true},
+            {"text": "Total Market", "value": "VTI"},
+            {"text": "NASDAQ 100", "value": "QQQ"}
+          ],
+          "current": {"text": "S&P 500", "value": "SPY"},
+          "hide": 0
+        }
+      ]
+    },
+    "panels": [
+      {
+        "id": 1,
+        "title": "Performance Overview",
+        "type": "stat",
+        "targets": [
+          {
+            "expr": "portfolio_total_return{portfolio_id=\"$portfolio\"}",
+            "legendFormat": "Total Return",
+            "refId": "A"
+          },
+          {
+            "expr": "portfolio_sharpe_ratio{portfolio_id=\"$portfolio\"}",
+            "legendFormat": "Sharpe Ratio",
+            "refId": "B"
+          },
+          {
+            "expr": "portfolio_max_drawdown{portfolio_id=\"$portfolio\"}",
+            "legendFormat": "Max Drawdown",
+            "refId": "C"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "percent",
+            "decimals": 2,
+            "thresholds": {
+              "steps": [
+                {"color": "red", "value": -10},
+                {"color": "yellow", "value": 0},
+                {"color": "green", "value": 5}
+              ]
+            }
+          },
+          "overrides": [
+            {
+              "matcher": {"id": "byName", "options": "Sharpe Ratio"},
+              "properties": [
+                {"id": "unit", "value": "short"},
+                {"id": "thresholds", "value": {
+                  "steps": [
+                    {"color": "red", "value": 0},
+                    {"color": "yellow", "value": 0.5},
+                    {"color": "green", "value": 1.0}
+                  ]
+                }}
+              ]
+            }
+          ]
+        },
+        "options": {
+          "reduceOptions": {
+            "values": false,
+            "calcs": ["lastNotNull"],
+            "fields": ""
+          },
+          "orientation": "vertical",
+          "textMode": "value_and_name",
+          "colorMode": "background",
+          "graphMode": "area",
+          "justifyMode": "center"
+        },
+        "gridPos": {"h": 8, "w": 24, "x": 0, "y": 0}
+      },
+      {
+        "id": 2,
+        "title": "Portfolio vs Benchmark",
+        "type": "timeseries",
+        "targets": [
+          {
+            "expr": "portfolio_cumulative_return{portfolio_id=\"$portfolio\"}",
+            "legendFormat": "Portfolio",
+            "refId": "A"
+          },
+          {
+            "expr": "benchmark_cumulative_return{benchmark=\"$benchmark\"}",
+            "legendFormat": "{{benchmark}}",
+            "refId": "B"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "percent",
+            "custom": {
+              "drawStyle": "line",
+              "lineInterpolation": "smooth",
+              "lineWidth": 3,
+              "fillOpacity": 15,
+              "gradientMode": "opacity",
+              "spanNulls": false,
+              "insertNulls": false,
+              "showPoints": "never",
+              "pointSize": 8,
+              "stacking": {"mode": "none"},
+              "axisPlacement": "auto",
+              "axisLabel": "",
+              "scaleDistribution": {"type": "linear"},
+              "hideFrom": {"legend": false, "tooltip": false, "vis": false},
+              "thresholdsStyle": {"mode": "off"}
+            },
+            "color": {"mode": "palette-classic"}
+          }
+        },
+        "options": {
+          "tooltip": {
+            "mode": "multi",
+            "sort": "desc"
+          },
+          "legend": {
+            "displayMode": "table",
+            "placement": "bottom",
+            "values": ["min", "max", "mean", "last"],
+            "calcs": ["min", "max", "mean", "lastNotNull"]
+          }
+        },
+        "gridPos": {"h": 10, "w": 24, "x": 0, "y": 8}
+      },
+      {
+        "id": 3,
+        "title": "Risk Metrics",
+        "type": "gauge",
+        "targets": [
+          {
+            "expr": "portfolio_volatility{portfolio_id=\"$portfolio\"}",
+            "legendFormat": "Volatility",
+            "refId": "A"
+          },
+          {
+            "expr": "portfolio_beta{portfolio_id=\"$portfolio\"}",
+            "legendFormat": "Beta",
+            "refId": "B"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "min": 0,
+            "max": 2,
+            "thresholds": {
+              "steps": [
+                {"color": "green", "value": 0},
+                {"color": "yellow", "value": 0.15},
+                {"color": "red", "value": 0.25}
+              ]
+            }
+          },
+          "overrides": [
+            {
+              "matcher": {"id": "byName", "options": "Beta"},
+              "properties": [
+                {"id": "min", "value": 0},
+                {"id": "max", "value": 2},
+                {"id": "thresholds", "value": {
+                  "steps": [
+                    {"color": "green", "value": 0},
+                    {"color": "yellow", "value": 1.2},
+                    {"color": "red", "value": 1.5}
+                  ]
+                }}
+              ]
+            }
+          ]
+        },
+        "options": {
+          "reduceOptions": {
+            "values": false,
+            "calcs": ["lastNotNull"],
+            "fields": ""
+          },
+          "orientation": "auto",
+          "showThresholdLabels": true,
+          "showThresholdMarkers": true,
+          "sizing": "auto"
+        },
+        "gridPos": {"h": 8, "w": 24, "x": 0, "y": 18}
+      },
+      {
+        "id": 4,
+        "title": "Recent Alerts",
+        "type": "table",
+        "targets": [
+          {
+            "expr": "portfolio_recent_alerts{portfolio_id=\"$portfolio\"}",
+            "format": "table",
+            "refId": "A"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "custom": {
+              "align": "left",
+              "displayMode": "auto",
+              "filterable": false
+            }
+          },
+          "overrides": [
+            {
+              "matcher": {"id": "byName", "options": "Severity"},
+              "properties": [
+                {
+                  "id": "custom.displayMode",
+                  "value": "color-background"
+                },
+                {
+                  "id": "thresholds",
+                  "value": {
+                    "steps": [
+                      {"color": "green", "value": 0},
+                      {"color": "yellow", "value": 1},
+                      {"color": "red", "value": 2}
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "matcher": {"id": "byName", "options": "Time"},
+              "properties": [
+                {"id": "custom.width", "value": 120}
+              ]
+            }
+          ]
+        },
+        "options": {
+          "showHeader": true,
+          "sortBy": [{"desc": true, "displayName": "Time"}]
+        },
+        "gridPos": {"h": 6, "w": 24, "x": 0, "y": 26}
+      },
+      {
+        "id": 5,
+        "title": "Quick Actions",
+        "type": "text",
+        "options": {
+          "mode": "html",
+          "content": "<div style=\"padding: 20px; text-align: center; font-family: Arial, sans-serif;\">\n  <h3 style=\"color: #1f77b4; margin-bottom: 20px;\">Quick Actions</h3>\n  <div style=\"display: flex; flex-wrap: wrap; justify-content: center; gap: 15px;\">\n    <a href=\"/api/v1/interactive/reports/$portfolio/generate\" \n       style=\"display: inline-block; padding: 12px 20px; background-color: #1f77b4; color: white; text-decoration: none; border-radius: 5px; font-weight: bold; min-width: 120px;\">\n      📊 Generate Report\n    </a>\n    <a href=\"/api/v1/interactive/alerts/$portfolio/configure\" \n       style=\"display: inline-block; padding: 12px 20px; background-color: #ff7f0e; color: white; text-decoration: none; border-radius: 5px; font-weight: bold; min-width: 120px;\">\n      🔔 Configure Alerts\n    </a>\n    <a href=\"/api/v1/interactive/dashboard/$portfolio/export\" \n       style=\"display: inline-block; padding: 12px 20px; background-color: #2ca02c; color: white; text-decoration: none; border-radius: 5px; font-weight: bold; min-width: 120px;\">\n      📤 Export Dashboard\n    </a>\n  </div>\n  <div style=\"margin-top: 20px; font-size: 12px; color: #666;\">\n    <p>📱 Mobile-optimized dashboard • Last updated: ${__from:date:YYYY-MM-DD HH:mm}</p>\n  </div>\n</div>"
+        },
+        "gridPos": {"h": 6, "w": 24, "x": 0, "y": 32}
+      }
+    ],
+    "links": [
+      {
+        "title": "Full Desktop Dashboard",
+        "url": "/d/portfolio-performance?var-portfolio=$portfolio",
+        "type": "link",
+        "icon": "external link",
+        "tooltip": "Switch to full desktop version"
+      },
+      {
+        "title": "Export Report",
+        "url": "/api/v1/interactive/reports/$portfolio/generate",
+        "type": "link",
+        "icon": "doc",
+        "tooltip": "Generate and download report"
+      }
+    ],
+    "annotations": {
+      "list": [
+        {
+          "name": "Portfolio Events",
+          "datasource": "Portfolio Analytics API",
+          "enable": true,
+          "iconColor": "blue",
+          "query": "portfolio_events{portfolio_id=\"$portfolio\"}"
+        }
+      ]
+    },
+    "style": "dark",
+    "graphTooltip": 1,
+    "schemaVersion": 30,
+    "version": 1
+  },
+  "overwrite": true
+}

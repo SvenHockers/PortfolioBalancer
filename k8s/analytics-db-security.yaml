@@ -1,0 +1,102 @@
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: analytics-db-credentials
+  namespace: portfolio-rebalancer
+  labels:
+    app: portfolio-rebalancer
+    component: analytics
+type: Opaque
+data:
+  # Database credentials (base64 encoded)
+  # These should be generated with strong passwords in production
+  POSTGRES_USER: YW5hbHl0aWNzX3VzZXI=  # analytics_user
+  POSTGRES_PASSWORD: U3Ryb25nUGFzc3dvcmQxMjMhQCM=  # StrongPassword123!@#
+  POSTGRES_DB: cG9ydGZvbGlvX2FuYWx5dGljcw==  # portfolio_analytics
+  
+  # Connection string with SSL
+  ANALYTICS_DB_URL: cG9zdGdyZXNxbDovL2FuYWx5dGljc191c2VyOlN0cm9uZ1Bhc3N3b3JkMTIzIUAjQHBvc3RncmVzLXNlcnZpY2U6NTQzMi9wb3J0Zm9saW9fYW5hbHl0aWNzP3NzbG1vZGU9cmVxdWlyZQ==
+  
+  # SSL certificate for database connection (if using external DB)
+  DB_SSL_CERT: ""
+  DB_SSL_KEY: ""
+  DB_SSL_CA: ""
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: analytics-db-config
+  namespace: portfolio-rebalancer
+  labels:
+    app: portfolio-rebalancer
+    component: analytics
+data:
+  # Database connection settings
+  POSTGRES_HOST: "postgres-service"
+  POSTGRES_PORT: "5432"
+  POSTGRES_SSLMODE: "require"
+  POSTGRES_CONNECT_TIMEOUT: "30"
+  POSTGRES_COMMAND_TIMEOUT: "60"
+  
+  # Connection pool settings
+  DB_POOL_SIZE: "20"
+  DB_MAX_OVERFLOW: "30"
+  DB_POOL_TIMEOUT: "30"
+  DB_POOL_RECYCLE: "3600"
+  DB_POOL_PRE_PING: "true"
+  
+  # Security settings
+  DB_ECHO_SQL: "false"
+  DB_AUTOCOMMIT: "false"
+  DB_ISOLATION_LEVEL: "READ_COMMITTED"
+
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: analytics-db-network-policy
+  namespace: portfolio-rebalancer
+spec:
+  podSelector:
+    matchLabels:
+      component: analytics
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  - from:
+    - podSelector:
+        matchLabels:
+          app: portfolio-rebalancer
+    ports:
+    - protocol: TCP
+      port: 8084
+    - protocol: TCP
+      port: 8085
+  egress:
+  - to:
+    - podSelector:
+        matchLabels:
+          app: postgres
+    ports:
+    - protocol: TCP
+      port: 5432
+  - to:
+    - podSelector:
+        matchLabels:
+          app: redis
+    ports:
+    - protocol: TCP
+      port: 6379
+  # Allow DNS resolution
+  - to: []
+    ports:
+    - protocol: UDP
+      port: 53
+  # Allow HTTPS outbound for external APIs
+  - to: []
+    ports:
+    - protocol: TCP
+      port: 443

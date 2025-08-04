@@ -50,3 +50,58 @@ data:
   CREDENTIAL_ROTATION_DAYS: "90"
   ENABLE_SECURE_COMMUNICATION: "true"
   SSL_VERIFY: "true"
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: analytics-config
+  namespace: portfolio-rebalancer
+  labels:
+    app: portfolio-rebalancer
+    component: analytics
+data:
+  # Analytics Service Configuration
+  ANALYTICS_SERVICE_PORT: "8084"
+  WEBSOCKET_PORT: "8085"
+  PROMETHEUS_METRICS_PORT: "8086"
+  
+  # Redis Configuration
+  REDIS_HOST: "redis-service"
+  REDIS_PORT: "6379"
+  REDIS_DB: "0"
+  REDIS_URL: "redis://redis-service:6379/0"
+  
+  # Celery Configuration
+  CELERY_BROKER_URL: "redis://redis-service:6379/1"
+  CELERY_RESULT_BACKEND: "redis://redis-service:6379/2"
+  
+  # WebSocket Configuration
+  WEBSOCKET_HOST: "0.0.0.0"
+  
+  # Analytics Configuration
+  ANALYTICS_CACHE_TTL: "3600"
+  ANALYTICS_MAX_CONCURRENT_TASKS: "5"
+  ANALYTICS_TASK_TIMEOUT: "1800"
+  ANALYTICS_DEFAULT_BACKTEST_DAYS: "252"
+  ANALYTICS_MAX_MONTE_CARLO_SIMULATIONS: "50000"
+  
+  # Database Configuration (non-sensitive)
+  POSTGRES_HOST: "postgres-service"
+  POSTGRES_PORT: "5432"
+  POSTGRES_DB: "portfolio_rebalancer"
+  
+  # Monitoring Configuration
+  ENABLE_PROMETHEUS_METRICS: "true"
+  METRICS_UPDATE_INTERVAL: "30"
+  
+  # Security Configuration
+  ENABLE_ANALYTICS_AUTH: "true"
+  ANALYTICS_CORS_ORIGINS: "*"
+  ANALYTICS_MAX_REQUEST_SIZE: "10485760"  # 10MB
+  
+  # Performance Configuration
+  ANALYTICS_WORKER_CONCURRENCY: "2"
+  ANALYTICS_PREFETCH_MULTIPLIER: "4"
+  ANALYTICS_TASK_SOFT_TIME_LIMIT: "1500"
+  ANALYTICS_TASK_TIME_LIMIT: "1800"

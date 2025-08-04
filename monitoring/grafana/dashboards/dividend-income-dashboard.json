@@ -1,0 +1,759 @@
+{
+  "dashboard": {
+    "id": null,
+    "title": "Dividend Income Analytics Dashboard",
+    "tags": ["portfolio", "dividend", "income", "yield", "projections"],
+    "timezone": "browser",
+    "panels": [
+      {
+        "id": 1,
+        "title": "Income Overview",
+        "type": "stat",
+        "targets": [
+          {
+            "expr": "portfolio_current_yield{portfolio_id=\"$portfolio\"}",
+            "legendFormat": "Current Yield",
+            "refId": "A"
+          },
+          {
+            "expr": "portfolio_projected_annual_income{portfolio_id=\"$portfolio\"}",
+            "legendFormat": "Projected Annual Income",
+            "refId": "B"
+          },
+          {
+            "expr": "portfolio_dividend_growth_rate{portfolio_id=\"$portfolio\"}",
+            "legendFormat": "Dividend Growth Rate",
+            "refId": "C"
+          },
+          {
+            "expr": "portfolio_payout_ratio{portfolio_id=\"$portfolio\"}",
+            "legendFormat": "Average Payout Ratio",
+            "refId": "D"
+          },
+          {
+            "expr": "portfolio_income_sustainability_score{portfolio_id=\"$portfolio\"}",
+            "legendFormat": "Sustainability Score",
+            "refId": "E"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "percent",
+            "decimals": 2,
+            "thresholds": {
+              "steps": [
+                {"color": "red", "value": 0},
+                {"color": "yellow", "value": 2},
+                {"color": "green", "value": 4}
+              ]
+            }
+          },
+          "overrides": [
+            {
+              "matcher": {"id": "byName", "options": "Projected Annual Income"},
+              "properties": [
+                {"id": "unit", "value": "currencyUSD"},
+                {"id": "thresholds", "value": {
+                  "steps": [
+                    {"color": "red", "value": 0},
+                    {"color": "yellow", "value": 1000},
+                    {"color": "green", "value": 5000}
+                  ]
+                }}
+              ]
+            },
+            {
+              "matcher": {"id": "byName", "options": "Sustainability Score"},
+              "properties": [
+                {"id": "unit", "value": "short"},
+                {"id": "min", "value": 0},
+                {"id": "max", "value": 100},
+                {"id": "thresholds", "value": {
+                  "steps": [
+                    {"color": "red", "value": 0},
+                    {"color": "yellow", "value": 60},
+                    {"color": "green", "value": 80}
+                  ]
+                }}
+              ]
+            }
+          ]
+        },
+        "options": {
+          "reduceOptions": {
+            "values": false,
+            "calcs": ["lastNotNull"],
+            "fields": ""
+          },
+          "orientation": "horizontal",
+          "textMode": "value_and_name",
+          "colorMode": "background"
+        },
+        "gridPos": {"h": 6, "w": 24, "x": 0, "y": 0}
+      },
+      {
+        "id": 2,
+        "title": "Dividend Income History",
+        "type": "timeseries",
+        "targets": [
+          {
+            "expr": "portfolio_monthly_dividend_income{portfolio_id=\"$portfolio\"}",
+            "legendFormat": "Monthly Dividend Income",
+            "refId": "A"
+          },
+          {
+            "expr": "portfolio_quarterly_dividend_income{portfolio_id=\"$portfolio\"}",
+            "legendFormat": "Quarterly Dividend Income",
+            "refId": "B"
+          },
+          {
+            "expr": "portfolio_annual_dividend_income{portfolio_id=\"$portfolio\"}",
+            "legendFormat": "Annual Dividend Income",
+            "refId": "C"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "currencyUSD",
+            "custom": {
+              "drawStyle": "line",
+              "lineInterpolation": "linear",
+              "lineWidth": 2,
+              "fillOpacity": 10,
+              "gradientMode": "none",
+              "spanNulls": false,
+              "insertNulls": false,
+              "showPoints": "auto",
+              "pointSize": 5,
+              "stacking": {"mode": "none", "group": "A"},
+              "axisPlacement": "auto",
+              "axisLabel": "Income ($)",
+              "scaleDistribution": {"type": "linear"},
+              "hideFrom": {"legend": false, "tooltip": false, "vis": false},
+              "thresholdsStyle": {"mode": "off"}
+            }
+          },
+          "overrides": [
+            {
+              "matcher": {"id": "byName", "options": "Annual Dividend Income"},
+              "properties": [
+                {"id": "custom.lineWidth", "value": 3},
+                {"id": "color", "value": {"mode": "fixed", "fixedColor": "green"}}
+              ]
+            }
+          ]
+        },
+        "options": {
+          "tooltip": {"mode": "multi", "sort": "desc"},
+          "legend": {"displayMode": "visible", "placement": "bottom", "calcs": ["lastNotNull", "mean"]}
+        },
+        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 6}
+      },
+      {
+        "id": 3,
+        "title": "Yield Tracking Over Time",
+        "type": "timeseries",
+        "targets": [
+          {
+            "expr": "portfolio_yield_history{portfolio_id=\"$portfolio\"}",
+            "legendFormat": "Portfolio Yield",
+            "refId": "A"
+          },
+          {
+            "expr": "benchmark_yield_history{benchmark=\"SPY\"}",
+            "legendFormat": "S&P 500 Yield",
+            "refId": "B"
+          },
+          {
+            "expr": "benchmark_yield_history{benchmark=\"VYM\"}",
+            "legendFormat": "High Dividend ETF Yield",
+            "refId": "C"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "percent",
+            "custom": {
+              "drawStyle": "line",
+              "lineWidth": 2,
+              "fillOpacity": 0
+            },
+            "thresholds": {
+              "steps": [
+                {"color": "red", "value": 0},
+                {"color": "yellow", "value": 2},
+                {"color": "green", "value": 4}
+              ]
+            }
+          },
+          "overrides": [
+            {
+              "matcher": {"id": "byName", "options": "Portfolio Yield"},
+              "properties": [
+                {"id": "custom.lineWidth", "value": 3},
+                {"id": "color", "value": {"mode": "fixed", "fixedColor": "blue"}}
+              ]
+            }
+          ]
+        },
+        "options": {
+          "tooltip": {"mode": "multi", "sort": "desc"},
+          "legend": {"displayMode": "visible", "placement": "bottom"}
+        },
+        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 6}
+      },
+      {
+        "id": 4,
+        "title": "Top Dividend Contributors",
+        "type": "barchart",
+        "targets": [
+          {
+            "expr": "portfolio_top_dividend_contributors{portfolio_id=\"$portfolio\"}",
+            "legendFormat": "{{ticker}}",
+            "refId": "A"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "currencyUSD",
+            "custom": {
+              "orientation": "horizontal",
+              "barWidth": 0.6,
+              "groupWidth": 0.7
+            },
+            "thresholds": {
+              "steps": [
+                {"color": "green", "value": 0},
+                {"color": "yellow", "value": 100},
+                {"color": "red", "value": 500}
+              ]
+            }
+          }
+        },
+        "options": {
+          "tooltip": {"mode": "single", "sort": "none"},
+          "legend": {"displayMode": "visible", "placement": "right"}
+        },
+        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 14}
+      },
+      {
+        "id": 5,
+        "title": "Dividend Yield by Holding",
+        "type": "table",
+        "targets": [
+          {
+            "expr": "portfolio_dividend_yield_by_holding{portfolio_id=\"$portfolio\"}",
+            "format": "table",
+            "refId": "A"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "custom": {
+              "align": "center",
+              "displayMode": "auto"
+            },
+            "decimals": 2
+          },
+          "overrides": [
+            {
+              "matcher": {"id": "byName", "options": "Ticker"},
+              "properties": [
+                {"id": "custom.width", "value": 80}
+              ]
+            },
+            {
+              "matcher": {"id": "byName", "options": "Dividend Yield"},
+              "properties": [
+                {"id": "unit", "value": "percent"},
+                {
+                  "id": "custom.displayMode",
+                  "value": "color-background"
+                },
+                {
+                  "id": "thresholds",
+                  "value": {
+                    "steps": [
+                      {"color": "red", "value": 0},
+                      {"color": "yellow", "value": 2},
+                      {"color": "green", "value": 4}
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "matcher": {"id": "byName", "options": "Annual Income"},
+              "properties": [
+                {"id": "unit", "value": "currencyUSD"}
+              ]
+            },
+            {
+              "matcher": {"id": "byName", "options": "Payout Ratio"},
+              "properties": [
+                {"id": "unit", "value": "percent"},
+                {
+                  "id": "custom.displayMode",
+                  "value": "color-background"
+                },
+                {
+                  "id": "thresholds",
+                  "value": {
+                    "steps": [
+                      {"color": "green", "value": 0},
+                      {"color": "yellow", "value": 60},
+                      {"color": "red", "value": 80}
+                    ]
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        "options": {
+          "showHeader": true,
+          "sortBy": [{"desc": true, "displayName": "Annual Income"}]
+        },
+        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 14}
+      },
+      {
+        "id": 6,
+        "title": "Income Projections (5-Year)",
+        "type": "timeseries",
+        "targets": [
+          {
+            "expr": "portfolio_income_projection{portfolio_id=\"$portfolio\", scenario=\"conservative\"}",
+            "legendFormat": "Conservative Projection",
+            "refId": "A"
+          },
+          {
+            "expr": "portfolio_income_projection{portfolio_id=\"$portfolio\", scenario=\"moderate\"}",
+            "legendFormat": "Moderate Projection",
+            "refId": "B"
+          },
+          {
+            "expr": "portfolio_income_projection{portfolio_id=\"$portfolio\", scenario=\"optimistic\"}",
+            "legendFormat": "Optimistic Projection",
+            "refId": "C"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "currencyUSD",
+            "custom": {
+              "drawStyle": "line",
+              "lineWidth": 2,
+              "fillOpacity": 20,
+              "gradientMode": "opacity"
+            }
+          },
+          "overrides": [
+            {
+              "matcher": {"id": "byName", "options": "Conservative Projection"},
+              "properties": [
+                {"id": "color", "value": {"mode": "fixed", "fixedColor": "red"}}
+              ]
+            },
+            {
+              "matcher": {"id": "byName", "options": "Moderate Projection"},
+              "properties": [
+                {"id": "color", "value": {"mode": "fixed", "fixedColor": "yellow"}},
+                {"id": "custom.lineWidth", "value": 3}
+              ]
+            },
+            {
+              "matcher": {"id": "byName", "options": "Optimistic Projection"},
+              "properties": [
+                {"id": "color", "value": {"mode": "fixed", "fixedColor": "green"}}
+              ]
+            }
+          ]
+        },
+        "options": {
+          "tooltip": {"mode": "multi", "sort": "desc"},
+          "legend": {"displayMode": "visible", "placement": "bottom"}
+        },
+        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 22}
+      },
+      {
+        "id": 7,
+        "title": "Dividend Coverage Analysis",
+        "type": "gauge",
+        "targets": [
+          {
+            "expr": "portfolio_dividend_coverage{portfolio_id=\"$portfolio\"}",
+            "legendFormat": "{{ticker}}",
+            "refId": "A"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "min": 0,
+            "max": 5,
+            "unit": "short",
+            "thresholds": {
+              "steps": [
+                {"color": "red", "value": 0},
+                {"color": "yellow", "value": 1.5},
+                {"color": "green", "value": 2.5}
+              ]
+            }
+          }
+        },
+        "options": {
+          "reduceOptions": {
+            "values": false,
+            "calcs": ["lastNotNull"],
+            "fields": ""
+          },
+          "orientation": "auto",
+          "showThresholdLabels": true,
+          "showThresholdMarkers": true
+        },
+        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 22}
+      },
+      {
+        "id": 8,
+        "title": "Seasonal Income Patterns",
+        "type": "timeseries",
+        "targets": [
+          {
+            "expr": "portfolio_seasonal_income{portfolio_id=\"$portfolio\"}",
+            "legendFormat": "{{month}} Income",
+            "refId": "A"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "currencyUSD",
+            "custom": {
+              "drawStyle": "bars",
+              "barAlignment": 0,
+              "barWidthFactor": 0.6,
+              "fillOpacity": 80,
+              "gradientMode": "none"
+            }
+          }
+        },
+        "options": {
+          "tooltip": {"mode": "single", "sort": "none"},
+          "legend": {"displayMode": "visible", "placement": "bottom"}
+        },
+        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 30}
+      },
+      {
+        "id": 9,
+        "title": "Income Goal Tracking",
+        "type": "stat",
+        "targets": [
+          {
+            "expr": "portfolio_income_goal_progress{portfolio_id=\"$portfolio\"}",
+            "legendFormat": "Goal Progress",
+            "refId": "A"
+          },
+          {
+            "expr": "portfolio_income_goal_target{portfolio_id=\"$portfolio\"}",
+            "legendFormat": "Annual Target",
+            "refId": "B"
+          },
+          {
+            "expr": "portfolio_income_ytd{portfolio_id=\"$portfolio\"}",
+            "legendFormat": "YTD Income",
+            "refId": "C"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "thresholds": {
+              "steps": [
+                {"color": "red", "value": 0},
+                {"color": "yellow", "value": 50},
+                {"color": "green", "value": 80}
+              ]
+            }
+          },
+          "overrides": [
+            {
+              "matcher": {"id": "byName", "options": "Goal Progress"},
+              "properties": [
+                {"id": "unit", "value": "percent"},
+                {"id": "min", "value": 0},
+                {"id": "max", "value": 100}
+              ]
+            },
+            {
+              "matcher": {"id": "byName", "options": "Annual Target"},
+              "properties": [
+                {"id": "unit", "value": "currencyUSD"}
+              ]
+            },
+            {
+              "matcher": {"id": "byName", "options": "YTD Income"},
+              "properties": [
+                {"id": "unit", "value": "currencyUSD"}
+              ]
+            }
+          ]
+        },
+        "options": {
+          "reduceOptions": {
+            "values": false,
+            "calcs": ["lastNotNull"],
+            "fields": ""
+          },
+          "orientation": "horizontal",
+          "textMode": "value_and_name",
+          "colorMode": "background"
+        },
+        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 30}
+      },
+      {
+        "id": 10,
+        "title": "Dividend Growth Rates by Holding",
+        "type": "table",
+        "targets": [
+          {
+            "expr": "portfolio_dividend_growth_rates{portfolio_id=\"$portfolio\"}",
+            "format": "table",
+            "refId": "A"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "custom": {
+              "align": "center",
+              "displayMode": "auto"
+            },
+            "decimals": 2
+          },
+          "overrides": [
+            {
+              "matcher": {"id": "byName", "options": "1-Year Growth"},
+              "properties": [
+                {"id": "unit", "value": "percent"},
+                {
+                  "id": "custom.displayMode",
+                  "value": "color-background"
+                },
+                {
+                  "id": "thresholds",
+                  "value": {
+                    "steps": [
+                      {"color": "red", "value": -5},
+                      {"color": "yellow", "value": 0},
+                      {"color": "green", "value": 5}
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "matcher": {"id": "byName", "options": "5-Year Growth"},
+              "properties": [
+                {"id": "unit", "value": "percent"},
+                {
+                  "id": "custom.displayMode",
+                  "value": "color-background"
+                },
+                {
+                  "id": "thresholds",
+                  "value": {
+                    "steps": [
+                      {"color": "red", "value": 0},
+                      {"color": "yellow", "value": 3},
+                      {"color": "green", "value": 7}
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "matcher": {"id": "byName", "options": "Consistency Score"},
+              "properties": [
+                {"id": "unit", "value": "short"},
+                {"id": "min", "value": 0},
+                {"id": "max", "value": 100},
+                {
+                  "id": "custom.displayMode",
+                  "value": "color-background"
+                },
+                {
+                  "id": "thresholds",
+                  "value": {
+                    "steps": [
+                      {"color": "red", "value": 0},
+                      {"color": "yellow", "value": 60},
+                      {"color": "green", "value": 80}
+                    ]
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        "options": {
+          "showHeader": true,
+          "sortBy": [{"desc": true, "displayName": "5-Year Growth"}]
+        },
+        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 38}
+      },
+      {
+        "id": 11,
+        "title": "Income Optimization Suggestions",
+        "type": "table",
+        "targets": [
+          {
+            "expr": "portfolio_income_optimization_suggestions{portfolio_id=\"$portfolio\"}",
+            "format": "table",
+            "refId": "A"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "custom": {
+              "align": "left",
+              "displayMode": "auto"
+            }
+          },
+          "overrides": [
+            {
+              "matcher": {"id": "byName", "options": "Priority"},
+              "properties": [
+                {
+                  "id": "mappings",
+                  "value": [
+                    {"options": {"High": {"color": "red", "index": 0}}, "type": "value"},
+                    {"options": {"Medium": {"color": "yellow", "index": 1}}, "type": "value"},
+                    {"options": {"Low": {"color": "green", "index": 2}}, "type": "value"}
+                  ]
+                }
+              ]
+            },
+            {
+              "matcher": {"id": "byName", "options": "Potential Income Increase"},
+              "properties": [
+                {"id": "unit", "value": "currencyUSD"}
+              ]
+            }
+          ]
+        },
+        "options": {
+          "showHeader": true,
+          "sortBy": [{"desc": true, "displayName": "Priority"}]
+        },
+        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 38}
+      },
+      {
+        "id": 12,
+        "title": "Dividend Calendar",
+        "type": "table",
+        "targets": [
+          {
+            "expr": "portfolio_upcoming_dividends{portfolio_id=\"$portfolio\"}",
+            "format": "table",
+            "refId": "A"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "custom": {
+              "align": "center",
+              "displayMode": "auto"
+            }
+          },
+          "overrides": [
+            {
+              "matcher": {"id": "byName", "options": "Ex-Dividend Date"},
+              "properties": [
+                {"id": "custom.width", "value": 120}
+              ]
+            },
+            {
+              "matcher": {"id": "byName", "options": "Payment Date"},
+              "properties": [
+                {"id": "custom.width", "value": 120}
+              ]
+            },
+            {
+              "matcher": {"id": "byName", "options": "Expected Amount"},
+              "properties": [
+                {"id": "unit", "value": "currencyUSD"}
+              ]
+            }
+          ]
+        },
+        "options": {
+          "showHeader": true,
+          "sortBy": [{"desc": false, "displayName": "Ex-Dividend Date"}]
+        },
+        "gridPos": {"h": 6, "w": 24, "x": 0, "y": 46}
+      }
+    ],
+    "time": {
+      "from": "now-2y",
+      "to": "now"
+    },
+    "timepicker": {
+      "refresh_intervals": ["5s", "10s", "30s", "1m", "5m", "15m", "30m", "1h", "2h", "1d"],
+      "time_options": ["5m", "15m", "1h", "6h", "12h", "24h", "2d", "7d", "30d"]
+    },
+    "templating": {
+      "list": [
+        {
+          "name": "portfolio",
+          "type": "query",
+          "query": "label_values(portfolio_current_yield, portfolio_id)",
+          "current": {
+            "selected": false,
+            "text": "All",
+            "value": "$__all"
+          },
+          "hide": 0,
+          "includeAll": false,
+          "multi": false,
+          "options": [],
+          "refresh": 1,
+          "regex": "",
+          "skipUrlSync": false,
+          "sort": 0,
+          "type": "query"
+        },
+        {
+          "name": "time_period",
+          "type": "custom",
+          "options": [
+            {"text": "1 Year", "value": "1y", "selected": false},
+            {"text": "2 Years", "value": "2y", "selected": true},
+            {"text": "5 Years", "value": "5y", "selected": false},
+            {"text": "10 Years", "value": "10y", "selected": false}
+          ],
+          "current": {"text": "2 Years", "value": "2y"}
+        }
+      ]
+    },
+    "annotations": {
+      "list": [
+        {
+          "name": "Dividend Payments",
+          "datasource": "Portfolio Analytics API",
+          "enable": true,
+          "expr": "portfolio_dividend_payment_events{portfolio_id=\"$portfolio\"}",
+          "iconColor": "green",
+          "textFormat": "Dividend: {{ticker}} - ${{amount}}"
+        },
+        {
+          "name": "Dividend Cuts/Increases",
+          "datasource": "Portfolio Analytics API",
+          "enable": true,
+          "expr": "portfolio_dividend_change_events{portfolio_id=\"$portfolio\"}",
+          "iconColor": "orange",
+          "textFormat": "{{change_type}}: {{ticker}} - {{change_percent}}%"
+        }
+      ]
+    },
+    "refresh": "1h",
+    "schemaVersion": 30,
+    "version": 1
+  },
+  "overwrite": true
+}

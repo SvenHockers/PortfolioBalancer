@@ -1,7 +1,7 @@
 """Pydantic data models for the portfolio rebalancer system."""
 
 from datetime import date as Date, datetime as DateTime
-from typing import Dict, Optional
+from typing import Dict, Optional, List
 from decimal import Decimal
 from pydantic import BaseModel, Field, field_validator, model_validator, ConfigDict
 from enum import Enum
@@ -207,5 +207,59 @@ class TradeOrder(BaseModel):
         
         if status in [OrderStatus.PENDING, OrderStatus.CANCELLED, OrderStatus.REJECTED] and fill_price is not None:
             raise ValueError("Fill price should not be provided for non-filled orders")
+        
+        return self
+
+
+class Portfolio(BaseModel):
+    """Model for portfolio definition."""
+    
+    model_config = ConfigDict(validate_assignment=True)
+    
+    id: str = Field(..., description="Portfolio identifier")
+    tickers: List[str] = Field(..., min_length=1, description="List of ticker symbols")
+    weights: List[float] = Field(..., min_length=1, description="Portfolio weights")
+    target_allocation: Dict[str, float] = Field(..., description="Target allocation mapping")
+    
+    @field_validator('tickers')
+    @classmethod
+    def validate_tickers(cls, v):
+        """Validate ticker symbols."""
+        if not v:
+            raise ValueError("At least one ticker must be provided")
+        
+        validated_tickers = []
+        for ticker in v:
+            if not ticker or not ticker.strip():
+                raise ValueError("Ticker symbols cannot be empty")
+            validated_tickers.append(ticker.strip().upper())
+        
+        return validated_tickers
+    
+    @field_validator('weights')
+    @classmethod
+    def validate_weights(cls, v):
+        """Validate portfolio weights sum to 1."""
+        if not v:
+            raise ValueError("Portfolio weights cannot be empty")
+        
+        if any(w < 0 for w in v):
+            raise ValueError("Portfolio weights cannot be negative")
+        
+        total_weight = sum(v)
+        if abs(total_weight - 1.0) > 0.01:
+            raise ValueError(f"Portfolio weights must sum to 1.0, got {total_weight}")
+        
+        return v
+    
+    @model_validator(mode='after')
+    def validate_portfolio_consistency(self):
+        """Validate portfolio tickers and weights have same length."""
+        if len(self.tickers) != len(self.weights):
+            raise ValueError("Portfolio tickers and weights must have same length")
+        
+        # Validate target allocation consistency
+        if set(self.tickers) != set(self.target_allocation.keys()):
+            raise ValueError("Target allocation must include all tickers")
         
         return self

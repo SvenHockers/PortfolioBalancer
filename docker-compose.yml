@@ -57,27 +57,42 @@ services:
       - RETRY_ATTEMPTS=${RETRY_ATTEMPTS:-3}
       - RETRY_DELAY=${RETRY_DELAY:-300}
 
+      # Service startup configuration
+      - SERVICE_STARTUP_DELAY=${SERVICE_STARTUP_DELAY:-30}
+      - SERVICE_RETRY_ATTEMPTS=${SERVICE_RETRY_ATTEMPTS:-5}
+      - SERVICE_RETRY_DELAY=${SERVICE_RETRY_DELAY:-10}
+
       # Logging Configuration
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
       - LOG_FORMAT=${LOG_FORMAT:-json}
       - LOG_FILE_PATH=/app/logs/scheduler.log
+      
+      # Cache Configuration
+      - YFINANCE_CACHE_DIR=/app/cache/yfinance
     volumes:
       - portfolio_data:/app/data
       - portfolio_logs:/app/logs
+      - portfolio_cache:/app/cache
     networks:
       - portfolio-network
-    restart: unless-stopped
+    restart: on-failure:5
     depends_on:
       data-storage:
         condition: service_completed_successfully
+      data-fetcher:
+        condition: service_started
+      optimizer:
+        condition: service_started
+      executor:
+        condition: service_started
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8083/health"]
       interval: 30s
       timeout: 10s
-      retries: 3
-      start_period: 40s
+      retries: 5
+      start_period: 90s
 
-  # Data fetcher service (manual execution)
+  # Data fetcher service
   data-fetcher:
     build:
       context: .
@@ -98,12 +113,22 @@ services:
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
       - LOG_FORMAT=${LOG_FORMAT:-json}
       - LOG_FILE_PATH=/app/logs/fetcher.log
+      
+      # Service startup configuration
+      - SERVICE_STARTUP_DELAY=${SERVICE_STARTUP_DELAY:-30}
+      - SERVICE_RETRY_ATTEMPTS=${SERVICE_RETRY_ATTEMPTS:-5}
+      - SERVICE_RETRY_DELAY=${SERVICE_RETRY_DELAY:-10}
+      - SERVICE_MAX_RETRY_DELAY=${SERVICE_MAX_RETRY_DELAY:-60}
+      
+      # Cache Configuration
+      - YFINANCE_CACHE_DIR=/app/cache/yfinance
     volumes:
       - portfolio_data:/app/data
       - portfolio_logs:/app/logs
+      - portfolio_cache:/app/cache
     networks:
       - portfolio-network
-    profiles: ["manual"]
+    restart: on-failure:5
     depends_on:
       data-storage:
         condition: service_completed_successfully
@@ -111,10 +136,10 @@ services:
       test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
       interval: 30s
       timeout: 10s
-      retries: 3
-      start_period: 40s
+      retries: 5
+      start_period: 60s
 
-  # Portfolio optimizer service (manual execution)
+  # Portfolio optimizer service
   optimizer:
     build:
       context: .
@@ -140,12 +165,22 @@ services:
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
       - LOG_FORMAT=${LOG_FORMAT:-json}
       - LOG_FILE_PATH=/app/logs/optimizer.log
+      
+      # Service startup configuration
+      - SERVICE_STARTUP_DELAY=${SERVICE_STARTUP_DELAY:-30}
+      - SERVICE_RETRY_ATTEMPTS=${SERVICE_RETRY_ATTEMPTS:-5}
+      - SERVICE_RETRY_DELAY=${SERVICE_RETRY_DELAY:-10}
+      - SERVICE_MAX_RETRY_DELAY=${SERVICE_MAX_RETRY_DELAY:-60}
+      
+      # Cache Configuration
+      - YFINANCE_CACHE_DIR=/app/cache/yfinance
     volumes:
       - portfolio_data:/app/data
       - portfolio_logs:/app/logs
+      - portfolio_cache:/app/cache
     networks:
       - portfolio-network
-    profiles: ["manual"]
+    restart: on-failure:5
     depends_on:
       data-storage:
         condition: service_completed_successfully
@@ -153,10 +188,10 @@ services:
       test: ["CMD", "curl", "-f", "http://localhost:8081/health"]
       interval: 30s
       timeout: 10s
-      retries: 3
-      start_period: 40s
+      retries: 5
+      start_period: 60s
 
-  # Trade executor service (manual execution)
+  # Trade executor service
   executor:
     build:
       context: .
@@ -185,12 +220,22 @@ services:
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
       - LOG_FORMAT=${LOG_FORMAT:-json}
       - LOG_FILE_PATH=/app/logs/executor.log
+      
+      # Service startup configuration
+      - SERVICE_STARTUP_DELAY=${SERVICE_STARTUP_DELAY:-30}
+      - SERVICE_RETRY_ATTEMPTS=${SERVICE_RETRY_ATTEMPTS:-5}
+      - SERVICE_RETRY_DELAY=${SERVICE_RETRY_DELAY:-10}
+      - SERVICE_MAX_RETRY_DELAY=${SERVICE_MAX_RETRY_DELAY:-60}
+      
+      # Cache Configuration
+      - YFINANCE_CACHE_DIR=/app/cache/yfinance
     volumes:
       - portfolio_data:/app/data
       - portfolio_logs:/app/logs
+      - portfolio_cache:/app/cache
     networks:
       - portfolio-network
-    profiles: ["manual"]
+    restart: on-failure:5
     depends_on:
       data-storage:
         condition: service_completed_successfully
@@ -198,8 +243,154 @@ services:
       test: ["CMD", "curl", "-f", "http://localhost:8082/health"]
       interval: 30s
       timeout: 10s
+      retries: 5
+      start_period: 60s
+
+  # Analytics service
+  analytics:
+    build:
+      context: .
+      dockerfile: dockerfiles/Dockerfile.analytics
+      target: production
+      args:
+        BUILD_DATE: ${BUILD_DATE:-}
+        VCS_REF: ${VCS_REF:-}
+        VERSION: ${VERSION:-latest}
+    image: ${ANALYTICS_IMAGE:-svenhockers/portfoliobalancer:analytics}
+    container_name: portfolio-analytics
+    ports:
+      - "8084:8084"
+      - "8085:8085"  # WebSocket port
+    environment:
+      # Data Configuration
+      - TICKERS=${TICKERS:-SPY,QQQ,VTI,VXUS,BND}
+      - STORAGE_TYPE=${STORAGE_TYPE:-parquet}
+      - STORAGE_PATH=/app/data
+      
+      # Analytics Database Configuration
+      - ANALYTICS_DB_URL=${ANALYTICS_DB_URL:-postgresql://portfolio_user:portfolio_pass@postgres:5432/portfolio_rebalancer}
+      - POSTGRES_HOST=${POSTGRES_HOST:-postgres}
+      - POSTGRES_PORT=${POSTGRES_PORT:-5432}
+      - POSTGRES_DB=${POSTGRES_DB:-portfolio_rebalancer}
+      - POSTGRES_USER=${POSTGRES_USER:-portfolio_user}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-portfolio_pass}
+      
+      # Redis Configuration for Caching
+      - REDIS_URL=${REDIS_URL:-redis://redis:6379/0}
+      - REDIS_HOST=${REDIS_HOST:-redis}
+      - REDIS_PORT=${REDIS_PORT:-6379}
+      - REDIS_DB=${REDIS_DB:-0}
+      
+      # Celery Configuration for Async Processing
+      - CELERY_BROKER_URL=${CELERY_BROKER_URL:-redis://redis:6379/1}
+      - CELERY_RESULT_BACKEND=${CELERY_RESULT_BACKEND:-redis://redis:6379/2}
+      
+      # WebSocket Configuration
+      - WEBSOCKET_HOST=${WEBSOCKET_HOST:-0.0.0.0}
+      - WEBSOCKET_PORT=${WEBSOCKET_PORT:-8085}
+      
+      # Analytics Configuration
+      - ANALYTICS_CACHE_TTL=${ANALYTICS_CACHE_TTL:-3600}
+      - ANALYTICS_MAX_CONCURRENT_TASKS=${ANALYTICS_MAX_CONCURRENT_TASKS:-5}
+      - ANALYTICS_TASK_TIMEOUT=${ANALYTICS_TASK_TIMEOUT:-1800}
+      
+      # Security Configuration
+      - ANALYTICS_JWT_SECRET=${ANALYTICS_JWT_SECRET:-your-secret-key-change-in-production}
+      - ANALYTICS_API_KEY=${ANALYTICS_API_KEY:-}
+      - ENABLE_ANALYTICS_AUTH=${ENABLE_ANALYTICS_AUTH:-false}
+      
+      # Logging Configuration
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - LOG_FORMAT=${LOG_FORMAT:-json}
+      - LOG_FILE_PATH=/app/logs/analytics.log
+      
+      # Cache Configuration
+      - YFINANCE_CACHE_DIR=/app/cache/yfinance
+      
+      # Monitoring Configuration
+      - PROMETHEUS_METRICS_PORT=${PROMETHEUS_METRICS_PORT:-8086}
+      - ENABLE_PROMETHEUS_METRICS=${ENABLE_PROMETHEUS_METRICS:-true}
+    volumes:
+      - portfolio_data:/app/data
+      - portfolio_logs:/app/logs
+      - analytics_cache:/app/cache
+      - portfolio_cache:/app/cache/yfinance
+    networks:
+      - portfolio-network
+    depends_on:
+      data-storage:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8084/health"]
+      interval: 30s
+      timeout: 10s
       retries: 3
-      start_period: 40s
+      start_period: 60s
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+          cpus: '2.0'
+        reservations:
+          memory: 1G
+          cpus: '1.0'
+    profiles: ["analytics"]
+
+  # Celery worker for analytics async processing
+  analytics-worker:
+    build:
+      context: .
+      dockerfile: dockerfiles/Dockerfile.analytics
+      target: production
+      args:
+        BUILD_DATE: ${BUILD_DATE:-}
+        VCS_REF: ${VCS_REF:-}
+        VERSION: ${VERSION:-latest}
+    image: ${ANALYTICS_IMAGE:-svenhockers/portfoliobalancer:analytics}
+    container_name: portfolio-analytics-worker
+    command: ["celery", "-A", "src.portfolio_rebalancer.analytics.async_processing", "worker", "--loglevel=info", "--concurrency=4"]
+    environment:
+      # Inherit most config from analytics service
+      - TICKERS=${TICKERS:-SPY,QQQ,VTI,VXUS,BND}
+      - STORAGE_TYPE=${STORAGE_TYPE:-parquet}
+      - STORAGE_PATH=/app/data
+      - ANALYTICS_DB_URL=${ANALYTICS_DB_URL:-postgresql://portfolio_user:portfolio_pass@postgres:5432/portfolio_rebalancer}
+      - REDIS_URL=${REDIS_URL:-redis://redis:6379/0}
+      - CELERY_BROKER_URL=${CELERY_BROKER_URL:-redis://redis:6379/1}
+      - CELERY_RESULT_BACKEND=${CELERY_RESULT_BACKEND:-redis://redis:6379/2}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - LOG_FORMAT=${LOG_FORMAT:-json}
+      - LOG_FILE_PATH=/app/logs/analytics-worker.log
+      
+      # Cache Configuration
+      - YFINANCE_CACHE_DIR=/app/cache/yfinance
+    volumes:
+      - portfolio_data:/app/data
+      - portfolio_logs:/app/logs
+      - analytics_cache:/app/cache
+      - portfolio_cache:/app/cache/yfinance
+    networks:
+      - portfolio-network
+    depends_on:
+      analytics:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+          cpus: '1.0'
+        reservations:
+          memory: 512M
+          cpus: '0.5'
+    profiles: ["analytics"]
 
   # Data storage initialization service
   data-storage:
@@ -208,16 +399,20 @@ services:
     command: |
       sh -c "
         echo 'Initializing data storage...' &&
-        mkdir -p /app/data /app/logs &&
-        chown -R 1000:1000 /app/data /app/logs &&
-        chmod -R 755 /app/data /app/logs &&
-        echo 'Data storage initialization complete'
+        sleep 5 &&
+        mkdir -p /app/data /app/logs /app/cache/yfinance &&
+        chown -R 1000:1000 /app/data /app/logs /app/cache &&
+        chmod -R 755 /app/data /app/logs /app/cache &&
+        echo 'Data storage initialization complete' &&
+        sleep 2
       "
     volumes:
       - portfolio_data:/app/data
       - portfolio_logs:/app/logs
+      - portfolio_cache:/app/cache
     networks:
       - portfolio-network
+    restart: "no"
 
   # Optional: Monitoring with Prometheus
   prometheus:
@@ -365,6 +560,12 @@ volumes:
       type: none
       o: bind
       device: ${LOGS_PATH:-${PWD}/logs}
+  portfolio_cache:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${CACHE_PATH:-${PWD}/cache}
 
   # Monitoring volumes
   prometheus_data:
@@ -378,6 +579,8 @@ volumes:
   redis_data:
     driver: local
   postgres_data:
+    driver: local
+  analytics_cache:
     driver: local
 
   # Backup volumes for data safety

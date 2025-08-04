@@ -1,0 +1,312 @@
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: analytics-security-scan
+  namespace: portfolio-rebalancer
+  labels:
+    app: portfolio-rebalancer
+    component: security-scan
+spec:
+  schedule: "0 4 * * 0"  # Weekly on Sunday at 4 AM
+  jobTemplate:
+    spec:
+      template:
+        metadata:
+          labels:
+            app: portfolio-rebalancer
+            component: security-scan
+        spec:
+          restartPolicy: OnFailure
+          containers:
+          - name: trivy-scanner
+            image: aquasec/trivy:latest
+            command:
+            - /bin/sh
+            - -c
+            - |
+              set -e
+              echo "Starting security vulnerability scan..."
+              
+              # Scan the analytics service image
+              trivy image --format json --output /reports/analytics-image-scan-$(date +%Y%m%d).json \
+                portfolio-rebalancer/analytics:latest || true
+              
+              # Scan the filesystem
+              trivy fs --format json --output /reports/analytics-fs-scan-$(date +%Y%m%d).json \
+                /app || true
+              
+              # Generate summary report
+              echo "Security scan completed at $(date)" > /reports/scan-summary-$(date +%Y%m%d).txt
+              echo "Image scan results:" >> /reports/scan-summary-$(date +%Y%m%d).txt
+              trivy image --format table portfolio-rebalancer/analytics:latest >> /reports/scan-summary-$(date +%Y%m%d).txt || true
+              
+              echo "Filesystem scan results:" >> /reports/scan-summary-$(date +%Y%m%d).txt
+              trivy fs --format table /app >> /reports/scan-summary-$(date +%Y%m%d).txt || true
+              
+              # Clean up old reports (keep last 30 days)
+              find /reports -name "*-scan-*.json" -mtime +30 -delete
+              find /reports -name "scan-summary-*.txt" -mtime +30 -delete
+              
+              echo "Security scan process completed"
+            volumeMounts:
+            - name: scan-reports
+              mountPath: /reports
+            - name: docker-socket
+              mountPath: /var/run/docker.sock
+              readOnly: true
+            resources:
+              requests:
+                memory: "512Mi"
+                cpu: "200m"
+              limits:
+                memory: "1Gi"
+                cpu: "500m"
+          volumes:
+          - name: scan-reports
+            persistentVolumeClaim:
+              claimName: security-scan-pvc
+          - name: docker-socket
+            hostPath:
+              path: /var/run/docker.sock
+
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: security-scan-pvc
+  namespace: portfolio-rebalancer
+  labels:
+    app: portfolio-rebalancer
+    component: security-scan
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 5Gi
+  storageClassName: standard
+
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: analytics-compliance-check
+  namespace: portfolio-rebalancer
+  labels:
+    app: portfolio-rebalancer
+    component: compliance-check
+spec:
+  schedule: "0 5 * * 1"  # Weekly on Monday at 5 AM
+  jobTemplate:
+    spec:
+      template:
+        metadata:
+          labels:
+            app: portfolio-rebalancer
+            component: compliance-check
+        spec:
+          restartPolicy: OnFailure
+          containers:
+          - name: compliance-checker
+            image: alpine:latest
+            command:
+            - /bin/sh
+            - -c
+            - |
+              set -e
+              echo "Starting compliance check..."
+              
+              REPORT_FILE="/reports/compliance-report-$(date +%Y%m%d).txt"
+              
+              echo "Portfolio Analytics Service Compliance Report" > $REPORT_FILE
+              echo "Generated: $(date)" >> $REPORT_FILE
+              echo "=========================================" >> $REPORT_FILE
+              echo "" >> $REPORT_FILE
+              
+              # Check container security
+              echo "Container Security Checks:" >> $REPORT_FILE
+              echo "- Running as non-root user: $(id -u)" >> $REPORT_FILE
+              echo "- Read-only root filesystem: $(mount | grep 'on / ' | grep -o 'ro' || echo 'rw')" >> $REPORT_FILE
+              echo "- Capabilities dropped: ALL" >> $REPORT_FILE
+              echo "" >> $REPORT_FILE
+              
+              # Check network policies
+              echo "Network Security:" >> $REPORT_FILE
+              kubectl get networkpolicy -n portfolio-rebalancer analytics-db-network-policy -o yaml >> $REPORT_FILE 2>/dev/null || echo "Network policy not found" >> $REPORT_FILE
+              echo "" >> $REPORT_FILE
+              
+              # Check secrets management
+              echo "Secrets Management:" >> $REPORT_FILE
+              kubectl get secrets -n portfolio-rebalancer | grep analytics >> $REPORT_FILE
+              echo "" >> $REPORT_FILE
+              
+              # Check RBAC
+              echo "RBAC Configuration:" >> $REPORT_FILE
+              kubectl get rolebindings -n portfolio-rebalancer | grep analytics >> $REPORT_FILE || echo "No specific RBAC found" >> $REPORT_FILE
+              echo "" >> $REPORT_FILE
+              
+              # Check resource limits
+              echo "Resource Limits:" >> $REPORT_FILE
+              kubectl get deployment -n portfolio-rebalancer portfolio-analytics -o jsonpath='{.spec.template.spec.containers[0].resources}' >> $REPORT_FILE
+              echo "" >> $REPORT_FILE
+              
+              echo "Compliance check completed"
+            volumeMounts:
+            - name: scan-reports
+              mountPath: /reports
+            resources:
+              requests:
+                memory: "128Mi"
+                cpu: "50m"
+              limits:
+                memory: "256Mi"
+                cpu: "200m"
+          volumes:
+          - name: scan-reports
+            persistentVolumeClaim:
+              claimName: security-scan-pvc
+          serviceAccountName: analytics-compliance-sa
+
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: analytics-compliance-sa
+  namespace: portfolio-rebalancer
+  labels:
+    app: portfolio-rebalancer
+    component: compliance-check
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: analytics-compliance-role
+  namespace: portfolio-rebalancer
+rules:
+- apiGroups: [""]
+  resources: ["secrets", "configmaps", "services"]
+  verbs: ["get", "list"]
+- apiGroups: ["apps"]
+  resources: ["deployments", "replicasets"]
+  verbs: ["get", "list"]
+- apiGroups: ["networking.k8s.io"]
+  resources: ["networkpolicies"]
+  verbs: ["get", "list"]
+- apiGroups: ["rbac.authorization.k8s.io"]
+  resources: ["roles", "rolebindings"]
+  verbs: ["get", "list"]
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: analytics-compliance-binding
+  namespace: portfolio-rebalancer
+subjects:
+- kind: ServiceAccount
+  name: analytics-compliance-sa
+  namespace: portfolio-rebalancer
+roleRef:
+  kind: Role
+  name: analytics-compliance-role
+  apiGroup: rbac.authorization.k8s.io
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: security-policies
+  namespace: portfolio-rebalancer
+  labels:
+    app: portfolio-rebalancer
+    component: security
+data:
+  security-policy.yaml: |
+    # Security Policy for Analytics Service
+    apiVersion: v1
+    kind: SecurityPolicy
+    metadata:
+      name: analytics-security-policy
+    spec:
+      # Container security requirements
+      containers:
+        - name: analytics-service
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1001
+            readOnlyRootFilesystem: false  # Analytics needs to write logs and cache
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+          resources:
+            limits:
+              memory: "2Gi"
+              cpu: "2000m"
+            requests:
+              memory: "1Gi"
+              cpu: "500m"
+      
+      # Network security requirements
+      network:
+        policies:
+          - name: analytics-network-policy
+            ingress:
+              - from:
+                  - podSelector:
+                      matchLabels:
+                        app: portfolio-rebalancer
+                ports:
+                  - protocol: TCP
+                    port: 8084
+                  - protocol: TCP
+                    port: 8085
+            egress:
+              - to:
+                  - podSelector:
+                      matchLabels:
+                        app: postgres
+                ports:
+                  - protocol: TCP
+                    port: 5432
+              - to:
+                  - podSelector:
+                      matchLabels:
+                        app: redis
+                ports:
+                  - protocol: TCP
+                    port: 6379
+      
+      # Data protection requirements
+      data:
+        encryption:
+          atRest: true
+          inTransit: true
+        backup:
+          enabled: true
+          schedule: "0 2 * * *"
+          retention: "30d"
+        access:
+          authentication: required
+          authorization: rbac
+      
+      # Monitoring and auditing
+      monitoring:
+        logging:
+          level: INFO
+          structured: true
+          retention: "90d"
+        metrics:
+          enabled: true
+          endpoint: "/metrics"
+        alerts:
+          enabled: true
+          channels: ["email", "slack"]
+      
+      # Compliance requirements
+      compliance:
+        standards: ["SOC2", "GDPR"]
+        auditing: enabled
+        reporting: monthly

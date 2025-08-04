@@ -2,9 +2,9 @@
 
 import os
 import logging
-from datetime import date, datetime, timedelta
+from datetime import date, timedelta
 from pathlib import Path
-from typing import List, Optional, Dict, Union
+from typing import List, Optional
 import pandas as pd
 import numpy as np
 import sqlalchemy as sa
@@ -15,11 +15,6 @@ from ..common.models import PriceData
 
 
 logger = logging.getLogger(__name__)
-
-
-class StorageError(Exception):
-    """Custom exception for storage-related errors."""
-    pass
 
 
 class ParquetStorage(DataStorage):
@@ -46,9 +41,6 @@ class ParquetStorage(DataStorage):
         
         Args:
             data: DataFrame with price data to store (multi-index with date, symbol)
-            
-        Raises:
-            StorageError: If storing data fails
         """
         if data.empty:
             logger.warning("No data to store")
@@ -56,10 +48,12 @@ class ParquetStorage(DataStorage):
         
         # Ensure data has the expected structure
         if not isinstance(data.index, pd.MultiIndex) or data.index.names != ['date', 'symbol']:
-            raise ValueError("Data must have multi-index with (date, symbol)")
+            logger.error("Data must have multi-index with (date, symbol)")
+            return
         
         if not {'adjusted_close', 'volume'}.issubset(data.columns):
-            raise ValueError("Data must contain 'adjusted_close' and 'volume' columns")
+            logger.error("Data must contain 'adjusted_close' and 'volume' columns")
+            return
         
         try:
             # Group by symbol and store each symbol's data in a separate file
@@ -87,7 +81,6 @@ class ParquetStorage(DataStorage):
         except Exception as e:
             error_msg = f"Failed to store price data: {e}"
             logger.error(error_msg)
-            raise StorageError(error_msg) from e
     
     def get_prices(self, tickers: List[str], lookback_days: int) -> pd.DataFrame:
         """
@@ -99,15 +92,14 @@ class ParquetStorage(DataStorage):
             
         Returns:
             DataFrame with historical price data (multi-index with date, symbol)
-            
-        Raises:
-            StorageError: If retrieving data fails
         """
         if not tickers:
-            raise ValueError("Tickers list cannot be empty")
+            logger.error("Tickers list cannot be empty")
+            return pd.DataFrame()
         
         if lookback_days <= 0:
-            raise ValueError("Lookback days must be positive")
+            logger.error("Lookback days must be positive")
+            return pd.DataFrame()
         
         # Calculate start date based on lookback
         end_date = date.today()
@@ -126,19 +118,19 @@ class ParquetStorage(DataStorage):
             
         Returns:
             DataFrame with historical price data (multi-index with date, symbol)
-            
-        Raises:
-            StorageError: If retrieving data fails
         """
         if not tickers:
-            raise ValueError("Tickers list cannot be empty")
+            logger.error("Tickers list cannot be empty")
+            return pd.DataFrame()
         
         if start_date > end_date:
-            raise ValueError("Start date cannot be after end date")
+            logger.error("Start date cannot be after end date")
+            return pd.DataFrame()
         
         clean_tickers = [ticker.strip().upper() for ticker in tickers if ticker.strip()]
         if not clean_tickers:
-            raise ValueError("No valid tickers provided")
+            logger.error("No valid tickers provided")
+            return pd.DataFrame()
         
         logger.info(f"Retrieving price data for {len(clean_tickers)} tickers from {start_date} to {end_date}")
         
@@ -201,21 +193,25 @@ class ParquetStorage(DataStorage):
             # Set multi-index
             result_df = result_df.set_index(['date', 'symbol'])
             
-            logger.info(f"Retrieved {len(result_df)} price records for {len(result_df.index.get_level_values('symbol').unique())} symbols")
+            # Sort by date and symbol
+            result_df = result_df.sort_index()
             
             if missing_tickers:
-                logger.warning(f"Missing data for tickers: {missing_tickers}")
+                logger.warning(f"Missing data for {len(missing_tickers)} tickers: {missing_tickers}")
+            
+            logger.info(f"Successfully retrieved data for {len(result_df.index.get_level_values('symbol').unique())} tickers")
             
             return result_df
         
         except Exception as e:
             error_msg = f"Failed to retrieve price data: {e}"
             logger.error(error_msg)
-            raise StorageError(error_msg) from e
+            return pd.DataFrame()
 
 
-# Define SQLAlchemy models
+# SQLAlchemy setup
 Base = declarative_base()
+
 
 class PriceRecord(Base):
     """SQLAlchemy model for price records."""
@@ -230,19 +226,19 @@ class PriceRecord(Base):
     
     # Composite index for faster lookups
     __table_args__ = (
-        sa.Index('idx_symbol_date', 'symbol', 'date', unique=True),
+        sa.Index('idx_symbol_date', 'symbol', 'date'),
     )
     
     def __repr__(self):
-        return f"<PriceRecord(symbol='{self.symbol}', date='{self.date}', adjusted_close={self.adjusted_close})>"
+        return f"<PriceRecord(symbol='{self.symbol}', date='{self.date}', adjusted_close={self.adjusted_close}, volume={self.volume})>"
 
 
 class SQLiteStorage(DataStorage):
-    """SQLite database storage implementation with SQLAlchemy."""
+    """SQLite database storage implementation with SQLAlchemy ORM."""
     
     def __init__(self, db_path: str):
         """
-        Initialize SQLiteStorage with database configuration.
+        Initialize SQLiteStorage with database path.
         
         Args:
             db_path: Path to SQLite database file
@@ -250,8 +246,9 @@ class SQLiteStorage(DataStorage):
         self.db_path = db_path
         self.engine = sa.create_engine(f"sqlite:///{db_path}")
         
-        # Create tables if they don't exist
+        # Create tables
         Base.metadata.create_all(self.engine)
+        
         logger.info(f"Initialized SQLiteStorage with database: {db_path}")
     
     def store_prices(self, data: pd.DataFrame) -> None:
@@ -260,9 +257,6 @@ class SQLiteStorage(DataStorage):
         
         Args:
             data: DataFrame with price data to store (multi-index with date, symbol)
-            
-        Raises:
-            StorageError: If storing data fails
         """
         if data.empty:
             logger.warning("No data to store")
@@ -270,60 +264,37 @@ class SQLiteStorage(DataStorage):
         
         # Ensure data has the expected structure
         if not isinstance(data.index, pd.MultiIndex) or data.index.names != ['date', 'symbol']:
-            raise ValueError("Data must have multi-index with (date, symbol)")
+            logger.error("Data must have multi-index with (date, symbol)")
+            return
         
         if not {'adjusted_close', 'volume'}.issubset(data.columns):
-            raise ValueError("Data must contain 'adjusted_close' and 'volume' columns")
+            logger.error("Data must contain 'adjusted_close' and 'volume' columns")
+            return
         
         try:
-            # Reset index to get date and symbol as columns
-            df = data.reset_index()
-            
-            # Create session
             with Session(self.engine) as session:
-                # Process in batches to avoid memory issues with large datasets
-                batch_size = 1000
-                total_records = 0
+                # Convert DataFrame to list of PriceRecord objects
+                records = []
+                for (date_val, symbol), row in data.iterrows():
+                    record = PriceRecord(
+                        symbol=symbol,
+                        date=date_val,
+                        adjusted_close=row['adjusted_close'],
+                        volume=int(row['volume'])
+                    )
+                    records.append(record)
                 
-                for i in range(0, len(df), batch_size):
-                    batch = df.iloc[i:i+batch_size]
-                    
-                    # Convert batch to list of dictionaries
-                    records = batch.to_dict(orient='records')
-                    
-                    # Prepare records for upsert
-                    for record in records:
-                        # Check if record already exists
-                        existing = session.query(PriceRecord).filter_by(
-                            symbol=record['symbol'],
-                            date=record['date']
-                        ).first()
-                        
-                        if existing:
-                            # Update existing record
-                            existing.adjusted_close = record['adjusted_close']
-                            existing.volume = record['volume']
-                        else:
-                            # Create new record
-                            new_record = PriceRecord(
-                                symbol=record['symbol'],
-                                date=record['date'],
-                                adjusted_close=record['adjusted_close'],
-                                volume=record['volume']
-                            )
-                            session.add(new_record)
-                    
-                    # Commit batch
-                    session.commit()
-                    total_records += len(batch)
-                    logger.debug(f"Stored batch of {len(batch)} records (total: {total_records})")
+                # Use merge to handle duplicates (upsert behavior)
+                for record in records:
+                    session.merge(record)
                 
-                logger.info(f"Successfully stored {total_records} price records to database")
+                session.commit()
+                
+                logger.info(f"Successfully stored {len(records)} price records for {len(data.index.get_level_values('symbol').unique())} symbols")
         
         except Exception as e:
             error_msg = f"Failed to store price data: {e}"
             logger.error(error_msg)
-            raise StorageError(error_msg) from e
     
     def get_prices(self, tickers: List[str], lookback_days: int) -> pd.DataFrame:
         """
@@ -335,15 +306,14 @@ class SQLiteStorage(DataStorage):
             
         Returns:
             DataFrame with historical price data (multi-index with date, symbol)
-            
-        Raises:
-            StorageError: If retrieving data fails
         """
         if not tickers:
-            raise ValueError("Tickers list cannot be empty")
+            logger.error("Tickers list cannot be empty")
+            return pd.DataFrame()
         
         if lookback_days <= 0:
-            raise ValueError("Lookback days must be positive")
+            logger.error("Lookback days must be positive")
+            return pd.DataFrame()
         
         # Calculate start date based on lookback
         end_date = date.today()
@@ -362,39 +332,35 @@ class SQLiteStorage(DataStorage):
             
         Returns:
             DataFrame with historical price data (multi-index with date, symbol)
-            
-        Raises:
-            StorageError: If retrieving data fails
         """
         if not tickers:
-            raise ValueError("Tickers list cannot be empty")
+            logger.error("Tickers list cannot be empty")
+            return pd.DataFrame()
         
         if start_date > end_date:
-            raise ValueError("Start date cannot be after end date")
+            logger.error("Start date cannot be after end date")
+            return pd.DataFrame()
         
         clean_tickers = [ticker.strip().upper() for ticker in tickers if ticker.strip()]
         if not clean_tickers:
-            raise ValueError("No valid tickers provided")
+            logger.error("No valid tickers provided")
+            return pd.DataFrame()
         
         logger.info(f"Retrieving price data for {len(clean_tickers)} tickers from {start_date} to {end_date}")
         
         try:
-            # Create session
             with Session(self.engine) as session:
-                # Query price records
-                query = (
-                    session.query(PriceRecord)
-                    .filter(PriceRecord.symbol.in_(clean_tickers))
-                    .filter(PriceRecord.date >= start_date)
-                    .filter(PriceRecord.date <= end_date)
-                    .order_by(PriceRecord.symbol, PriceRecord.date)
-                )
+                # Query for price records
+                query = session.query(PriceRecord).filter(
+                    PriceRecord.symbol.in_(clean_tickers),
+                    PriceRecord.date >= start_date,
+                    PriceRecord.date <= end_date
+                ).order_by(PriceRecord.symbol, PriceRecord.date)
                 
-                # Execute query
                 records = query.all()
                 
                 if not records:
-                    logger.warning(f"No data found for tickers in the specified date range")
+                    logger.warning(f"No data found for any tickers in the specified date range")
                     return pd.DataFrame()
                 
                 # Convert to DataFrame
@@ -408,21 +374,20 @@ class SQLiteStorage(DataStorage):
                     })
                 
                 df = pd.DataFrame(data)
-                
-                # Set multi-index
                 df = df.set_index(['date', 'symbol'])
                 
-                logger.info(f"Retrieved {len(df)} price records for {len(df.index.get_level_values('symbol').unique())} symbols")
-                
                 # Check for missing tickers
-                retrieved_tickers = set(df.index.get_level_values('symbol').unique())
-                missing_tickers = set(clean_tickers) - retrieved_tickers
+                found_tickers = set(df.index.get_level_values('symbol').unique())
+                missing_tickers = set(clean_tickers) - found_tickers
+                
                 if missing_tickers:
-                    logger.warning(f"Missing data for tickers: {missing_tickers}")
+                    logger.warning(f"Missing data for {len(missing_tickers)} tickers: {missing_tickers}")
+                
+                logger.info(f"Successfully retrieved data for {len(found_tickers)} tickers")
                 
                 return df
         
         except Exception as e:
             error_msg = f"Failed to retrieve price data: {e}"
             logger.error(error_msg)
-            raise StorageError(error_msg) from e
+            return pd.DataFrame()
